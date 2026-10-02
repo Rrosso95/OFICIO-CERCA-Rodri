@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: oficio-cerca
+    runtime: docker
+    plan: free
+    healthCheckPath: /api/health
+    envVars:
+      - key: DB_PATH
+        value: /app/data/oficios.db
+      - key: SEED_LAT
+        value: "40.4168"
+      - key: SEED_LNG
+        value: "-3.7038"
+    # Para conservar los datos entre reinicios: cambia plan a starter y descomenta
+    # disk:
+    #   name: oficios-data
+    #   mountPath: /app/data
+    #   sizeGB: 1
