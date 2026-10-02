@@ -74,3 +74,4 @@ public/          index.html, app.js, styles.css
 
 Esto es un prototipo funcional. Antes de abrirlo al público: verificación de email y de profesionales (DNI/licencia), reseñas solo tras un trabajo acordado, moderación y denuncias, almacenamiento de imágenes en S3 en lugar de la base de datos, PostgreSQL + PostGIS para búsquedas geográficas a escala, HTTPS, límites de peticiones, y textos legales (RGPD, términos de uso).
 # oficio-cerca
+# oficio-cerca
