@@ -1,0 +1,16 @@
+{
+  "name": "oficio-cerca",
+  "version": "1.0.0",
+  "description": "Marketplace de profesionales de oficios con búsqueda por radio de desplazamiento",
+  "main": "server.js",
+  "scripts": {
+    "start": "node --disable-warning=ExperimentalWarning server.js"
+  },
+  "engines": {
+    "node": ">=22.13"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "leaflet": "^1.9.4"
+  }
+}

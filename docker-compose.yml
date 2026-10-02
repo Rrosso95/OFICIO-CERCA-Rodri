@@ -1,0 +1,15 @@
+services:
+  app:
+    build: .
+    container_name: oficio-cerca
+    ports:
+      - "3080:3000"
+    environment:
+      # Centro de los datos de ejemplo (por defecto Madrid)
+      SEED_LAT: "40.4168"
+      SEED_LNG: "-3.7038"
+    volumes:
+      - oficios-data:/app/data
+    restart: unless-stopped
+volumes:
+  oficios-data:
