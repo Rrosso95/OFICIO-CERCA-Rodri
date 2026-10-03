@@ -2,7 +2,7 @@
 
 Web para que profesionales de oficios (plomero/fontanero, gasista, electricista, cerrajero…) publiquen su perfil con su **radio de desplazamiento**, y los clientes encuentren a quienes **realmente llegan hasta su ubicación**, vean reseñas y les contacten directamente.
 
-## Arrancar con Docker (PowerShell)
+## Arrancar con Docker
 
 ```powershell
 Expand-Archive .\oficio-cerca.zip -DestinationPath .
@@ -10,7 +10,7 @@ cd .\oficio-cerca
 docker compose up --build -d
 ```
 
-Abre http://localhost:3000
+Abre http://localhost:3080
 
 La primera vez se cargan ~36 profesionales de ejemplo alrededor de Madrid, con reseñas.
 
@@ -73,5 +73,3 @@ public/          index.html, app.js, styles.css
 ## Siguientes pasos para producción
 
 Esto es un prototipo funcional. Antes de abrirlo al público: verificación de email y de profesionales (DNI/licencia), reseñas solo tras un trabajo acordado, moderación y denuncias, almacenamiento de imágenes en S3 en lugar de la base de datos, PostgreSQL + PostGIS para búsquedas geográficas a escala, HTTPS, límites de peticiones, y textos legales (RGPD, términos de uso).
-# oficio-cerca
-# oficio-cerca

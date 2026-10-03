@@ -3,20 +3,55 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Oficio Cerca — profesionales de confianza cerca de ti</title>
+  <title>Oficio Cerca — fontaneros, electricistas y gasistas cerca de ti</title>
+  <meta name="description" content="Encuentra fontaneros, gasistas, electricistas, cerrajeros y más profesionales que se desplazan hasta tu casa. Compara reseñas y precios y contacta gratis.">
+  <meta name="theme-color" content="#c2410c">
+  <link rel="canonical" href="__ORIGIN__/">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Oficio Cerca">
+  <meta property="og:title" content="Oficio Cerca — el profesional que necesitas, a la vuelta de la esquina">
+  <meta property="og:description" content="Profesionales de oficios que llegan hasta tu casa, con reseñas de otros clientes. Gratis y sin comisiones.">
+  <meta property="og:url" content="__ORIGIN__/">
+  <meta property="og:image" content="__ORIGIN__/og.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:locale" content="es_ES">
+  <meta name="twitter:card" content="summary_large_image">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/icon-192.png">
+  <link rel="manifest" href="/manifest.webmanifest">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/vendor/leaflet/leaflet.css">
   <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
+  <div id="demoBanner" class="demo-banner" hidden>Versión de demostración: los profesionales, teléfonos y reseñas son ficticios.</div>
   <header class="topbar">
-    <a href="#/" class="logo"><span class="logo-mark">◆</span> Oficio<b>Cerca</b></a>
-    <nav id="nav"></nav>
+    <a href="#/" class="logo" aria-label="Oficio Cerca, inicio"><span class="logo-mark">◆</span><span>Oficio<b>Cerca</b></span></a>
+    <button id="menuBtn" class="menu-btn" aria-label="Abrir menú">
+      <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+    </button>
+    <nav id="nav" aria-label="Principal"></nav>
   </header>
   <main id="app"></main>
-  <div id="toast"></div>
+  <footer class="footer">
+    <div class="footer-inner">
+      <div class="footer-brand">
+        <a href="#/" class="logo"><span class="logo-mark">◆</span><span>Oficio<b>Cerca</b></span></a>
+        <p>Profesionales de oficios que llegan hasta tu casa. Gratis y sin comisiones.</p>
+      </div>
+      <nav aria-label="Oficio Cerca"><h4>Oficio Cerca</h4>
+        <a href="#/buscar">Buscar profesionales</a><a href="#/profesionales">Para profesionales</a><a href="#/contacto">Contacto</a></nav>
+      <nav aria-label="Legal"><h4>Legal</h4>
+        <a href="#/legal/aviso-legal">Aviso legal</a><a href="#/legal/privacidad">Privacidad</a><a href="#/legal/cookies">Cookies</a></nav>
+    </div>
+    <p class="footer-copy">© <span id="year"></span> Oficio Cerca · Mapas © colaboradores de OpenStreetMap</p>
+  </footer>
+  <div id="toast" role="status" aria-live="polite"></div>
+  <script>document.getElementById('year').textContent = new Date().getFullYear();</script>
   <script src="/vendor/leaflet/leaflet.js"></script>
+  <script src="/icons.js"></script>
   <script src="/app.js"></script>
 </body>
 </html>

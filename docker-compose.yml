@@ -5,6 +5,8 @@ services:
     ports:
       - "3080:3000"
     environment:
+      # true = datos de ejemplo, cuentas demo y aviso de demo. Pon "false" en producción.
+      DEMO_MODE: "true"
       # Centro de los datos de ejemplo (por defecto Madrid)
       SEED_LAT: "40.4168"
       SEED_LNG: "-3.7038"

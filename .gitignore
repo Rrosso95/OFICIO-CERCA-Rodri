@@ -1,0 +1,25 @@
+# Dependencias
+node_modules/
+
+# Base de datos local (SQLite)
+data/
+*.db
+*.db-shm
+*.db-wal
+
+# Variables de entorno
+.env
+.env.*
+
+# Logs
+npm-debug.log*
+*.log
+
+# Sistema / editores
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Empaquetados
+*.zip

@@ -5,6 +5,9 @@ services:
     plan: free
     healthCheckPath: /api/health
     envVars:
+      # true = datos de ejemplo, cuentas demo y aviso de demo. Pon "false" en producción.
+      - key: DEMO_MODE
+        value: "true"
       - key: DB_PATH
         value: /app/data/oficios.db
       - key: SEED_LAT

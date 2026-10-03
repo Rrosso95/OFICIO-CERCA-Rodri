@@ -6,6 +6,8 @@ const path = require('node:path');
 const fs = require('node:fs');
 
 const PORT = process.env.PORT || 3000;
+// DEMO_MODE=true: carga datos de ejemplo, muestra cuentas demo y un aviso en la web. Ponlo a false en producción.
+const DEMO_MODE = process.env.DEMO_MODE !== 'false';
 const DB_PATH = process.env.DB_PATH || path.join(__dirname, 'data', 'oficios.db');
 fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
 
@@ -74,6 +76,13 @@ CREATE TABLE IF NOT EXISTS conversations (
   pro_read_at TEXT DEFAULT '',
   client_read_at TEXT DEFAULT '',
   UNIQUE(pro_id, client_id)
+);
+CREATE TABLE IF NOT EXISTS alerts (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  email TEXT NOT NULL,
+  trade TEXT DEFAULT '',
+  lat REAL, lng REAL, label TEXT DEFAULT '',
+  created_at TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS messages (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -166,6 +175,14 @@ function unreadCount(userId) {
 // ---------- app ----------
 const app = express();
 app.use(express.json({ limit: '8mb' }));
+app.set('trust proxy', true);
+// index.html con la URL pública para Open Graph / canonical
+const INDEX = fs.readFileSync(path.join(__dirname, 'public', 'index.html'), 'utf8');
+const sendIndex = (req, res) => {
+  const origin = process.env.PUBLIC_URL || process.env.RENDER_EXTERNAL_URL || `${req.protocol}://${req.get('host')}`;
+  res.type('html').send(INDEX.replaceAll('__ORIGIN__', origin.replace(/\/$/, '')));
+};
+app.get(['/', '/index.html'], sendIndex);
 app.use(express.static(path.join(__dirname, 'public')));
 app.use('/vendor/leaflet', express.static(path.join(__dirname, 'node_modules', 'leaflet', 'dist')));
 
@@ -190,6 +207,41 @@ function newSession(userId) {
 
 app.get('/api/health', (_req, res) => res.json({ ok: true }));
 app.get('/api/trades', (_req, res) => res.json(TRADES));
+app.get('/api/config', (_req, res) => res.json({ demo: DEMO_MODE }));
+
+app.get('/api/stats', (_req, res) => {
+  const pros = db.prepare('SELECT COUNT(*) AS c FROM pros WHERE active = 1').get().c;
+  const r = db.prepare('SELECT COUNT(*) AS c, ROUND(AVG(rating), 1) AS avg FROM reviews').get();
+  const recent = db.prepare(`
+    SELECT r.rating, r.comment, r.created_at, u.name AS author, p.user_id AS pro_id, pu.name AS pro_name, p.trade
+    FROM reviews r JOIN users u ON u.id = r.user_id JOIN pros p ON p.user_id = r.pro_id JOIN users pu ON pu.id = p.user_id
+    WHERE r.rating = 5 AND LENGTH(r.comment) > 20 AND p.active = 1
+      AND r.id = (SELECT MAX(r2.id) FROM reviews r2 WHERE r2.comment = r.comment AND r2.rating = 5)
+    ORDER BY r.created_at DESC LIMIT 3`).all();
+  res.json({ pros, reviews: r.c, avg_rating: r.avg, recent_reviews: recent });
+});
+
+// Destacados: mejor valorados (mín. 3 reseñas) que llegan a la ubicación indicada
+app.get('/api/featured', (req, res) => {
+  const lat = num(req.query.lat), lng = num(req.query.lng);
+  const rows = db.prepare(`${PRO_SELECT} WHERE p.active = 1 AND p.base_lat IS NOT NULL`).all()
+    .filter((r) => r.review_count >= 3)
+    .map((r) => ({ r, d: lat != null ? haversineKm(lat, lng, r.base_lat, r.base_lng) : null }))
+    .filter(({ r, d }) => d == null || d <= r.radius_km)
+    .sort((a, b) => b.r.avg_rating - a.r.avg_rating || b.r.review_count - a.r.review_count)
+    .slice(0, 4)
+    .map(({ r, d }) => ({ ...proOut(r), distance_km: d == null ? null : Math.round(d * 10) / 10 }));
+  res.json(rows);
+});
+
+// "Avísame cuando haya profesionales en mi zona"
+app.post('/api/alerts', (req, res) => {
+  const email = String(req.body.email || '').trim().toLowerCase();
+  if (!/^\S+@\S+\.\S+$/.test(email)) return res.status(400).json({ error: 'Email no válido' });
+  db.prepare('INSERT INTO alerts (email, trade, lat, lng, label, created_at) VALUES (?,?,?,?,?,?)')
+    .run(email, str(req.body.trade, 60), num(req.body.lat), num(req.body.lng), str(req.body.label, 200), now());
+  res.json({ ok: true });
+});
 
 // --- auth ---
 app.post('/api/auth/register', (req, res) => {
@@ -276,7 +328,11 @@ app.get('/api/pros/:id', (req, res) => {
   const dist = db.prepare('SELECT rating, COUNT(*) AS c FROM reviews WHERE pro_id = ? GROUP BY rating').all(row.user_id);
   const breakdown = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
   dist.forEach((d) => (breakdown[d.rating] = d.c));
-  res.json({ ...proOut(row, { full: true }), reviews, breakdown });
+  const out = { ...proOut(row, { full: true }), reviews, breakdown };
+  // El contacto directo solo se muestra a usuarios registrados
+  out.has_phone = !!row.phone; out.has_whatsapp = !!row.whatsapp; out.has_email = !!row.contact_email;
+  if (!req.user) { out.phone = ''; out.whatsapp = ''; out.contact_email = ''; out.contact_locked = true; }
+  res.json(out);
 });
 
 // Búsqueda: profesionales cuyo radio de desplazamiento cubre la ubicación del cliente
@@ -414,6 +470,14 @@ app.post('/api/messages/:id/offer', auth, (req, res) => {
 app.use('/api', (_req, res) => res.status(404).json({ error: 'No encontrado' }));
 
 // ---------- seed ----------
-require('./seed')(db, { hashPassword, TRADES });
+if (DEMO_MODE) require('./seed')(db, { hashPassword, TRADES });
+
+// Keep-alive para Render gratis: se pide a sí mismo por la URL pública cada 10 min para no dormirse.
+// Render define RENDER_EXTERNAL_URL automáticamente. Desactivar con KEEP_ALIVE=false.
+if (process.env.RENDER_EXTERNAL_URL && process.env.KEEP_ALIVE !== 'false') {
+  const url = `${process.env.RENDER_EXTERNAL_URL}/api/health`;
+  setInterval(() => fetch(url).catch(() => {}), 10 * 60 * 1000);
+  console.log('Keep-alive activo contra', url);
+}
 
 app.listen(PORT, () => console.log(`Oficio Cerca escuchando en http://localhost:${PORT}`));
