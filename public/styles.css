@@ -285,12 +285,15 @@ code { background: rgba(0,0,0,.06); padding: 1px 5px; border-radius: 4px; }
 /* footer */
 .footer { background: #1f1b16; color: #d8cfc4; margin-top: 56px; }
 body.full .footer { display: none; }
+.made-by { color: #a99f93; }
+.pewmatic { color: #fff; font-family: var(--head); font-weight: 800; letter-spacing: .02em; }
+.pewmatic::before { content: "●"; color: var(--accent); margin-right: 5px; font-size: .7em; vertical-align: .15em; }
 .footer-inner { max-width: 1140px; margin: 0 auto; padding: 40px 24px 20px; display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 28px; }
 .footer .logo { color: #fff; } .footer-brand p { margin: 10px 0 0; max-width: 320px; }
 .footer nav { display: grid; gap: 8px; align-content: start; }
 .footer h4 { color: #fff; font-size: .95rem; margin: 0 0 4px; }
 .footer a:not(.logo) { color: #d8cfc4; } .footer a:hover { color: #fff; }
-.footer-copy { max-width: 1140px; margin: 0 auto; padding: 16px 24px 28px; border-top: 1px solid #3a332b; font-size: .82rem; color: #a99f93; }
+.footer-copy { max-width: 1140px; margin: 0 auto; padding: 16px 24px 28px; border-top: 1px solid #3a332b; font-size: .82rem; display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px 24px; color: #a99f93; }
 
 .cookie { position: fixed; left: 16px; right: 16px; bottom: 16px; max-width: 640px; margin: 0 auto; z-index: 1500; display: flex; gap: 14px; align-items: center;
   background: #fff; border: 1px solid var(--line); border-radius: 14px; box-shadow: 0 10px 30px rgba(0,0,0,.15); padding: 14px 16px; }
