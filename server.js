@@ -218,7 +218,8 @@ function newSession(userId) {
 
 app.get('/api/health', (_req, res) => res.json({ ok: true }));
 app.get('/api/trades', (_req, res) => res.json(TRADES));
-app.get('/api/config', (_req, res) => res.json({ demo: DEMO_MODE, pay: { mode: pay.mode, fee_pct: pay.feePct, release_hours: pay.releaseHours }, order_expiry_days: Number(process.env.ORDER_EXPIRY_DAYS ?? 7) }));
+app.get('/api/config', (_req, res) => res.json({ demo: DEMO_MODE, pay: { mode: pay.mode, fee_pct: pay.feePct, release_hours: pay.releaseHours }, order_expiry_days: Number(process.env.ORDER_EXPIRY_DAYS ?? 7),
+  center: { lat: Number(process.env.SEED_LAT) || 43.45, lng: Number(process.env.SEED_LNG) || -5.76, zoom: process.env.SEED_LAT ? 10 : 9 } }));
 
 app.get('/api/stats', (_req, res) => {
   const pros = db.prepare('SELECT COUNT(*) AS c FROM pros WHERE active = 1').get().c;

@@ -22,7 +22,7 @@ Requisitos: Docker. Sin Docker: Node.js 22.13 o superior y `npm install && npm s
 docker compose up --build -d
 ```
 
-Abre http://localhost:3080. La primera vez se cargan unos 36 profesionales de ejemplo alrededor de Madrid, con reseñas y pedidos.
+Abre http://localhost:3080. La primera vez se cargan unos 36 profesionales de ejemplo repartidos por **Asturias** (Oviedo, Gijón, Avilés, Siero, Langreo y Mieres), con reseñas y pedidos.
 
 | Cuenta de prueba (contraseña `demo1234`) | Para ver |
 |---|---|
@@ -103,7 +103,7 @@ Los emails nunca incluyen la dirección exacta ni el nombre completo del cliente
 ### Precios y SEO
 - **Páginas renderizadas en el servidor**, indexables y con datos estructurados:
   - `/precios`, `/precios/:oficio` y `/precios/:oficio/:trabajo`.
-  - `/servicios/:oficio` y `/servicios/:oficio/:ciudad`, para 8 ciudades.
+  - `/servicios/:oficio` y `/servicios/:oficio/:ciudad`, para 11 ciudades (Oviedo, Gijón y Avilés, más 8 de otras zonas de España). Las ciudades sin profesionales llevan `noindex`.
   - `sitemap.xml` y `robots.txt`.
 - **Páginas de ciudad sin profesionales:** llevan `noindex` y quedan fuera del sitemap.
 - **Precios:** son **rangos de referencia** escritos a mano en [prices.js](prices.js). Cuando un oficio acumula 8 o más presupuestos aceptados, se muestra también el rango medido en la plataforma.
@@ -123,7 +123,7 @@ Todas las variables de entorno se pasan en [docker-compose.yml](docker-compose.y
 | `DEMO_MODE` | `true` | Datos de ejemplo, aviso de demo, pagos simulados y la cuenta `admin@demo.com`. **`false` en producción** |
 | `PUBLIC_URL` | — | URL pública (p. ej. `https://oficiocerca.es`), usada en canonical, sitemap, emails y retornos de Stripe. **Obligatoria en producción** |
 | `DB_PATH` | `data/oficios.db` | Base de datos SQLite; los documentos privados se guardan en `private/`, en la misma carpeta |
-| `SEED_LAT`, `SEED_LNG` | Madrid | Centro de los datos de ejemplo |
+| `SEED_LAT`, `SEED_LNG` | Asturias | Si los defines, los datos de ejemplo se reparten alrededor de ese punto y el mapa se centra ahí (p. ej. Madrid: `40.4168`, `-3.7038`) |
 | `ANTHROPIC_API_KEY` | — | Activa el asistente con Claude |
 | `AI_MODEL` | `claude-opus-5-5` | Modelo de Claude (`claude-haiku-5-5` es mucho más barato) |
 | `STRIPE_SECRET_KEY` | — | Activa los pagos reales con Stripe Connect (usa `sk_test_...` para probar) |
