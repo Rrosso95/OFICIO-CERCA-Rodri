@@ -1,23 +1,12 @@
 'use strict';
 // Asistente que convierte "me pasa esto en casa" en un pedido listo para recibir presupuestos.
-// Proveedores: Claude (ANTHROPIC_API_KEY) o Gemini (GEMINI_API_KEY, tiene capa gratuita para probar).
-// Sin clave, o si la API falla, cae a un asistente guiado por palabras clave.
+// Con ANTHROPIC_API_KEY usa Claude; sin clave (o si la API falla) cae a un asistente guiado por palabras clave.
 const Anthropic = require('@anthropic-ai/sdk');
 const prices = require('./prices');
 
 const MODEL = process.env.AI_MODEL || 'claude-opus-5-5';
-const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
-const GEMINI_BASE = (process.env.GEMINI_API_BASE || 'https://generativelanguage.googleapis.com').replace(/\/$/, '');
 const hasClaude = () => !!(process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN);
-const hasGemini = () => !!process.env.GEMINI_API_KEY;
-// AI_PROVIDER fuerza 'claude', 'gemini' o 'basic'; si no, se usa la primera clave disponible
-function provider() {
-  const p = process.env.AI_PROVIDER;
-  if (p === 'claude' && hasClaude()) return 'claude';
-  if (p === 'gemini' && hasGemini()) return 'gemini';
-  if (p === 'basic') return 'basic';
-  return hasClaude() ? 'claude' : hasGemini() ? 'gemini' : 'basic';
-}
+const provider = () => (hasClaude() ? 'claude' : 'basic');
 let client = null;
 const getClient = () => (client ||= new (Anthropic.default || Anthropic)({ timeout: 30000, maxRetries: 1 }));
 
@@ -43,22 +32,6 @@ function schema(trades) {
   };
 }
 
-const geminiSchema = () => ({
-  type: 'OBJECT',
-  properties: {
-    status: { type: 'STRING', enum: STATUSES },
-    reply: { type: 'STRING' },
-    trade: { type: 'STRING' },
-    title: { type: 'STRING' },
-    summary: { type: 'STRING' },
-    urgency: { type: 'STRING', enum: URGENCIES },
-    estimate_min: { type: 'NUMBER' },
-    estimate_max: { type: 'NUMBER' },
-  },
-  required: ['status', 'reply', 'trade', 'title', 'summary', 'urgency', 'estimate_min', 'estimate_max'],
-  propertyOrdering: ['status', 'reply', 'trade', 'title', 'summary', 'urgency', 'estimate_min', 'estimate_max'],
-});
-
 async function askClaude(system, messages, trades) {
   const res = await getClient().messages.create({
     model: MODEL, max_tokens: 4000, system, messages,
@@ -66,27 +39,6 @@ async function askClaude(system, messages, trades) {
   });
   if (res.stop_reason === 'refusal') throw new Error('refusal');
   return JSON.parse(res.content.find((b) => b.type === 'text')?.text || '{}');
-}
-
-async function askGemini(system, messages) {
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), 30000);
-  try {
-    const r = await fetch(`${GEMINI_BASE}/v1beta/models/${encodeURIComponent(GEMINI_MODEL)}:generateContent`, {
-      method: 'POST', signal: ctrl.signal,
-      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': process.env.GEMINI_API_KEY },
-      body: JSON.stringify({
-        systemInstruction: { parts: [{ text: system }] },
-        contents: messages.map((m) => ({ role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: m.content }] })),
-        generationConfig: { responseMimeType: 'application/json', responseSchema: geminiSchema(), temperature: 0.4 },
-      }),
-    });
-    const d = await r.json().catch(() => ({}));
-    if (!r.ok) throw Object.assign(new Error(d.error?.message || `Gemini ${r.status}`), { status: r.status });
-    const text = d.candidates?.[0]?.content?.parts?.map((p) => p.text || '').join('') || '';
-    if (!text) throw new Error(`Gemini sin respuesta (${d.candidates?.[0]?.finishReason || d.promptFeedback?.blockReason || 'vacía'})`);
-    return JSON.parse(text);
-  } finally { clearTimeout(timer); }
 }
 
 const systemPrompt = (trades) => `Eres el asistente de Oficio Cerca, un servicio en España que conecta a particulares con profesionales de oficios. Tu trabajo es entender bien el problema del hogar del usuario, como lo haría un buen profesional por teléfono, y dejar listo un pedido para que los profesionales de su zona le envíen presupuestos.
@@ -264,7 +216,7 @@ async function chat(rawMessages, trades) {
 
   try {
     const system = systemPrompt(trades) + (mustFinish ? '\n\nYa has preguntado lo suficiente: responde ahora con status "ready" (o "off_topic").' : '');
-    const data = prov === 'gemini' ? await askGemini(system, messages) : await askClaude(system, messages, trades);
+    const data = await askClaude(system, messages, trades);
     const out = normalize(data, trades, mustFinish);
     if (out.status === 'ready' && !out.summary) out.summary = messages.filter((m) => m.role === 'user').map((m) => m.content).join(' ').slice(0, 600);
     if (out.status === 'ready' && !out.title) out.title = out.summary.slice(0, 70);
