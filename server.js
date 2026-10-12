@@ -153,7 +153,7 @@ function proOut(row, { full = false } = {}) {
       description: row.description, phone: row.phone, whatsapp: row.whatsapp,
       contact_email: row.contact_email, license: row.license, hours: row.hours,
       payment_methods: parse(row.payment_methods), languages: parse(row.languages),
-      gallery: parse(row.gallery), updated_at: row.updated_at,
+      gallery: parse(row.gallery), updated_at: row.updated_at, email_alerts: row.email_alerts !== 0,
     });
   }
   return o;
@@ -177,6 +177,9 @@ let orders = null; // se inicializa más abajo (orders.js)
 const app = express();
 // Pagos (Stripe Connect o simulado). El webhook necesita el cuerpo sin parsear, así que va antes de express.json.
 const pay = require('./payments')({ db, now, DEMO_MODE });
+const mailer = require('./mailer')({ db, now });
+// Migración: alertas por email de pedidos nuevos (activadas por defecto)
+if (!db.prepare('PRAGMA table_info(pros)').all().some((c) => c.name === 'email_alerts')) db.exec('ALTER TABLE pros ADD COLUMN email_alerts INTEGER NOT NULL DEFAULT 1');
 app.post('/api/stripe/webhook', express.raw({ type: 'application/json' }), pay.webhook);
 app.use(express.json({ limit: '8mb' }));
 app.set('trust proxy', true);
@@ -472,8 +475,18 @@ app.post('/api/messages/:id/offer', auth, (req, res) => {
 });
 
 // --- pedidos, presupuestos e IA ---
-orders = require('./orders')(app, { db, auth, TRADES, now, num, str, parse, haversineKm, PRO_SELECT, proOut, pay });
+orders = require('./orders')(app, { db, auth, TRADES, now, num, str, parse, haversineKm, PRO_SELECT, proOut, pay, mailer });
 pay.routes(app, auth);
+
+app.put('/api/pros/me/alerts', auth, (req, res) => {
+  const r = db.prepare('UPDATE pros SET email_alerts = ? WHERE user_id = ?').run(req.body?.email_alerts === false ? 0 : 1, req.user.id);
+  if (!r.changes) return res.status(404).json({ error: 'Primero crea tu perfil profesional' });
+  res.json({ ok: true });
+});
+app.get('/api/admin/emails', auth, (req, res) => {
+  if (!pay.isAdmin(req.user)) return res.status(403).json({ error: 'Solo para administración' });
+  res.json({ mode: mailer.mode, emails: db.prepare('SELECT * FROM email_log ORDER BY id DESC LIMIT 30').all() });
+});
 
 // --- precios, páginas por oficio/ciudad (SEO) y herramientas gratuitas ---
 require('./seo')(app, { db, PRO_SELECT, proOut, haversineKm, parse, TRADES });

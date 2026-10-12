@@ -99,7 +99,13 @@ Variables: `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `PUBLIC_URL` (para las 
 
 **Pendiente antes de cobrar dinero real:** revisión legal de [las condiciones](public/app.js) (borrador en `#/legal/condiciones`), facturación de la comisión, comprobar con Stripe que tu cuenta de plataforma puede operar así (Connect, retención y transferencias en España/UE), y probar el flujo con Stripe real: yo solo lo he verificado contra un Stripe simulado en local, no contra la API real.
 
-**Aún no incluye:** avisos por email o push, verificación documental de profesionales, caducidad automática de pedidos y cancelación por parte del profesional.
+## Avisos por email
+
+Cuando un cliente publica un pedido, se avisa por email a los profesionales **activos de ese oficio cuyo radio cubre la ubicación** (máx. 50 por pedido), con título, barrio, distancia, urgencia y enlace. El email **nunca incluye la dirección exacta ni el nombre del cliente**. El profesional puede desactivar estos avisos con una casilla en su perfil (`PUT /api/pros/me/alerts`).
+
+Se envían por SMTP genérico: `SMTP_HOST`, `SMTP_PORT` (587), `SMTP_USER`, `SMTP_PASS`, `SMTP_SECURE=true` (para el puerto 465), `SMTP_FROM`. Sin `SMTP_HOST` no se envía nada: los emails se guardan en la tabla `email_log` y un administrador los ve en `GET /api/admin/emails`. Un fallo de email nunca rompe la operación que lo origina. Para producción usa un dominio propio con SPF/DKIM configurados para no caer en spam.
+
+**Aún no incluye:** avisos por email al cliente (presupuestos, mensajes) y de pagos, notificaciones push, verificación documental de profesionales, caducidad automática de pedidos y cancelación por parte del profesional.
 
 ## Arquitectura
 
@@ -111,6 +117,7 @@ Variables: `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `PUBLIC_URL` (para las 
 server.js        API REST (usuarios, perfiles, búsqueda, reseñas, mensajes)
 orders.js        pedidos, presupuestos y chat del pedido
 payments.js      pagos con retención (Stripe Connect o simulado), reclamaciones, administración
+mailer.js        envío de emails por SMTP (o registro local sin SMTP)
 ai.js            asistente (Claude + respaldo por palabras clave)
 prices.js        precios de referencia, emparejado de trabajos y veredicto del comparador
 seo.js           páginas de precios/servicios, sitemap y APIs de las herramientas

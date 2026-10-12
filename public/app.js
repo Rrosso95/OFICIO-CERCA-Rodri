@@ -831,6 +831,7 @@ async function viewPanel() {
             <label>WhatsApp<input name="whatsapp" type="tel" value="${esc(p.whatsapp)}" placeholder="+34 600 000 000"></label>
             <label>Email de contacto<input name="contact_email" type="email" value="${esc(p.contact_email)}"></label>
           </div>
+          ${state.pro ? `<label class="check"><input type="checkbox" id="alertsOn" ${p.email_alerts !== false ? 'checked' : ''}> Avisarme por email (${esc(state.me.email)}) cuando haya un pedido nuevo en mi zona</label>` : ''}
         </section>
 
         <section>
@@ -874,6 +875,11 @@ async function viewPanel() {
     try { const l = await getLoc(); pos = { lat: l.lat, lng: l.lng }; setLabel(l.label); draw(true); } catch (err) { toast(err.message, 'err'); }
   });
 
+  const ao = document.getElementById('alertsOn');
+  if (ao) ao.onchange = async () => {
+    try { await api('/api/pros/me/alerts', { method: 'PUT', body: { email_alerts: ao.checked } }); toast(ao.checked ? 'Avisos por email activados' : 'Avisos por email desactivados'); }
+    catch (e) { ao.checked = !ao.checked; toast(e.message, 'err'); }
+  };
   const renderPhoto = () => { document.getElementById('photoPrev').innerHTML = avatar({ ...p, id: state.me.id, name: f.name.value, trade: f.trade.value || p.trade, photo }, 'xl'); };
   document.getElementById('photoIn').onchange = async (e) => { if (e.target.files[0]) { photo = await fileToDataURL(e.target.files[0], 320); renderPhoto(); } };
   const pd = document.getElementById('photoDel'); if (pd) pd.onclick = () => { photo = ''; renderPhoto(); pd.remove(); };

@@ -3,7 +3,7 @@
 // presupuestos, el cliente elige y hablan por un chat interno ligado al pedido.
 const { chat: aiChat, aiEnabled } = require('./ai');
 
-module.exports = function ordersModule(app, { db, auth, TRADES, now, num, str, parse, haversineKm, PRO_SELECT, proOut, pay }) {
+module.exports = function ordersModule(app, { db, auth, TRADES, now, num, str, parse, haversineKm, PRO_SELECT, proOut, pay, mailer }) {
   db.exec(`
   CREATE TABLE IF NOT EXISTS orders (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -98,6 +98,27 @@ module.exports = function ordersModule(app, { db, auth, TRADES, now, num, str, p
     catch (e) { fail(res, e.status || 500, e.status ? e.message : 'No se pudo procesar tu mensaje'); }
   });
 
+  // ---------- avisos por email a los profesionales de la zona ----------
+  const URG_TXT = { hoy: 'Hoy mismo', semana: 'Esta semana', flexible: 'Sin prisa' };
+  async function notifyNewOrder(orderId, base) {
+    const o = get('SELECT * FROM orders WHERE id = ?', orderId);
+    if (!o) return;
+    const pros = all(`SELECT p.*, u.email, u.name FROM pros p JOIN users u ON u.id = p.user_id
+      WHERE p.active = 1 AND p.email_alerts = 1 AND p.user_id != ?`, o.client_id).filter((p) => proMatches(p, o)).slice(0, 50);
+    for (const p of pros) {
+      const km = Math.round(haversineKm(o.lat, o.lng, p.base_lat, p.base_lng) * 10) / 10;
+      const desc = o.description.length > 300 ? `${o.description.slice(0, 300)}…` : o.description;
+      await mailer.send({
+        to: p.email, subject: `Nuevo pedido en tu zona: ${o.title}`,
+        text: [`Hola ${firstName(p.name)},`, '', `Hay un pedido nuevo de ${o.trade.toLowerCase()} cerca de ti:`, '', o.title,
+          `Zona: ${areaOf(o.address_label)} (a ${km} km de tu base)`, `Cuándo: ${URG_TXT[o.urgency]}${o.when_text ? ` · ${o.when_text}` : ''}`,
+          ...(o.est_min ? [`Precio orientativo de mano de obra: ${o.est_min} – ${o.est_max} €`] : []), '', desc, '',
+          `Ver el pedido y enviar tu presupuesto: ${base}/#/pedido/${o.id}`, '',
+          `Recibes este aviso porque tienes activadas las alertas de pedidos nuevos. Puedes desactivarlas en tu perfil profesional: ${base}/#/panel`, 'Oficio Cerca'].join('\n'),
+      });
+    }
+  }
+
   // ---------- crear pedido ----------
   app.post('/api/orders', auth, (req, res) => {
     const b = req.body || {};
@@ -114,6 +135,8 @@ module.exports = function ordersModule(app, { db, auth, TRADES, now, num, str, p
       req.user.id, b.trade, title, str(b.description, 2000).trim(), URGENCIES.includes(b.urgency) ? b.urgency : 'semana',
       str(b.when_text, 200).trim(), est_min && est_max && est_max >= est_min ? est_min : null, est_min && est_max && est_max >= est_min ? est_max : null,
       str(b.address_label, 200), str(b.address_detail, 200).trim(), lat, lng, JSON.stringify(photos), t, t);
+    const base = (process.env.PUBLIC_URL || process.env.RENDER_EXTERNAL_URL || `${req.protocol}://${req.get('host')}`).replace(/\/$/, '');
+    notifyNewOrder(Number(r.lastInsertRowid), base).catch((e) => console.error('avisos:', e.message));
     res.json({ id: Number(r.lastInsertRowid) });
   });
 

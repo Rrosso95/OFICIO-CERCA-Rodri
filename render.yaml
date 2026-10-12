@@ -26,6 +26,15 @@ services:
         sync: false
       - key: ADMIN_EMAILS
         sync: false
+      # Avisos por email (SMTP genérico)
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASS
+        sync: false
+      - key: SMTP_FROM
+        sync: false
     # Para conservar los datos entre reinicios: cambia plan a starter y descomenta
     # disk:
     #   name: oficios-data
