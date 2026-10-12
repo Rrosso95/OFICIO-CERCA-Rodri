@@ -14,6 +14,11 @@ services:
       # Ponla en tu entorno o en un archivo .env junto a este compose: ANTHROPIC_API_KEY=sk-ant-...
       ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:-}"
       AI_MODEL: "${AI_MODEL:-claude-opus-5-5}"
+      # Alternativa: Gemini (tiene capa gratuita para probar; en ella Google puede usar los datos para mejorar sus productos)
+      GEMINI_API_KEY: "${GEMINI_API_KEY:-}"
+      GEMINI_MODEL: "${GEMINI_MODEL:-gemini-2.5-flash}"
+      # Forzar proveedor: claude | gemini | basic (por defecto, la primera clave disponible)
+      AI_PROVIDER: "${AI_PROVIDER:-}"
       # Pagos con retención. Sin clave de Stripe y con DEMO_MODE=true funcionan en modo simulado (sin dinero real);
       # sin clave y con DEMO_MODE=false quedan desactivados. Pon claves de TEST (sk_test_...) para probar Stripe.
       STRIPE_SECRET_KEY: "${STRIPE_SECRET_KEY:-}"

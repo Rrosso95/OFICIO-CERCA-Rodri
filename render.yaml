@@ -17,6 +17,9 @@ services:
       # Opcional: activa el asistente con Claude (sin ella usa un clasificador básico)
       - key: ANTHROPIC_API_KEY
         sync: false
+      # Alternativa a Claude para el asistente
+      - key: GEMINI_API_KEY
+        sync: false
       # Pagos con Stripe Connect (claves de TEST para probar). Sin STRIPE_SECRET_KEY: simulado si DEMO_MODE=true, si no desactivado.
       - key: STRIPE_SECRET_KEY
         sync: false

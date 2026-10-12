@@ -38,7 +38,7 @@ docker compose down -v     # parar y BORRAR los datos (vuelve a sembrar la demo)
 ```
 
 En modo demostración (`DEMO_MODE=true`) todo funciona sin claves externas:
-- **IA:** el asistente usa un clasificador por palabras clave.
+- **IA:** el asistente hace preguntas guiadas por oficio a partir de palabras clave. Para que entienda cualquier problema como una IA, configura Claude o Gemini (ver [Configuración](#configuración)).
 - **Pagos:** son simulados, sin dinero real.
 - **Emails:** se guardan en un registro en vez de enviarse.
 
@@ -124,8 +124,11 @@ Todas las variables de entorno se pasan en [docker-compose.yml](docker-compose.y
 | `PUBLIC_URL` | — | URL pública (p. ej. `https://oficiocerca.es`), usada en canonical, sitemap, emails y retornos de Stripe. **Obligatoria en producción** |
 | `DB_PATH` | `data/oficios.db` | Base de datos SQLite; los documentos privados se guardan en `private/`, en la misma carpeta |
 | `SEED_LAT`, `SEED_LNG` | Madrid | Centro de los datos de ejemplo |
-| `ANTHROPIC_API_KEY` | — | Activa el asistente con Claude; sin ella, usa el clasificador básico |
-| `AI_MODEL` | `claude-opus-5-5` | Modelo del asistente |
+| `ANTHROPIC_API_KEY` | — | Activa el asistente con Claude |
+| `AI_MODEL` | `claude-opus-5-5` | Modelo de Claude (`claude-haiku-5-5` es mucho más barato) |
+| `GEMINI_API_KEY` | — | Activa el asistente con Gemini. Tiene capa gratuita para probar; en ella Google puede usar los datos para mejorar sus productos, así que no la uses con clientes reales |
+| `GEMINI_MODEL` | `gemini-2.5-flash` | Modelo de Gemini (consulta en Google AI Studio cuáles tienen capa gratuita) |
+| `AI_PROVIDER` | automático | Fuerza `claude`, `gemini` o `basic`. Por defecto usa la primera clave disponible; sin claves, el asistente guiado por palabras clave |
 | `STRIPE_SECRET_KEY` | — | Activa los pagos reales con Stripe Connect (usa `sk_test_...` para probar) |
 | `STRIPE_WEBHOOK_SECRET` | — | Firma del webhook `/api/stripe/webhook`; sin ella, el estado del pago se consulta al abrir el pedido |
 | `PAYMENTS_MODE` | automático | Fuerza `stripe`, `simulated` u `off` |
@@ -153,7 +156,7 @@ Todas las variables de entorno se pasan en [docker-compose.yml](docker-compose.y
 ```
 server.js        arranque, usuarios, perfiles, búsqueda, reseñas, mensajes directos
 orders.js        pedidos, presupuestos, chat del pedido, caducidad, cancelaciones, avisos de pedidos
-ai.js            asistente (Claude con salida estructurada, o clasificador por palabras clave)
+ai.js            asistente (Claude o Gemini con salida estructurada, o preguntas guiadas por palabras clave)
 payments.js      pagos con retención, reclamaciones y administración de pagos
 verification.js  verificación documental de profesionales
 notify.js        avisos por email y push (claves VAPID)
@@ -190,7 +193,7 @@ Autenticación con `Authorization: Bearer <token>`, que devuelven `/api/auth/log
 - **Flujos de punta a punta:** se comprobaron contra un servidor local con datos limpios usando **scripts de prueba temporales**, que no están en el repositorio. Cubren pedidos y permisos, el ciclo de pagos (retención, liberación manual y automática, reclamación, reembolso, cancelación), los avisos, la verificación documental, la caducidad, la cancelación por el profesional y la republicación.
 - **Navegador:** la interfaz se revisó en escritorio y en móvil.
 - **Stripe:** se verificó contra un **Stripe simulado en local** (importes en céntimos, comisión, `source_transaction`, cuenta Express ES). **No se ha probado contra la API real de Stripe.**
-- **Asistente con Claude:** **no se ha probado con una clave real**. Solo se ha probado el clasificador de respaldo.
+- **Asistente con IA:** **no se ha probado con una clave real** de Claude ni de Gemini. La integración con Gemini se verificó contra una API simulada en local (petición, esquema JSON y recuperación ante errores). El modo guiado sin IA sí se ha probado.
 - **Emails:** se enviaron a un servidor SMTP simulado. No se ha probado con un proveedor real ni la entregabilidad.
 - **Push:** el envío se probó con `web-push` simulado (incluida la limpieza de suscripciones caducadas). No se ha probado la recepción en un dispositivo real.
 - **Tests automatizados:** no hay. Es lo primero que conviene añadir (ver abajo).
