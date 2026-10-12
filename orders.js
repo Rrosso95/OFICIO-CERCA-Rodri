@@ -1,7 +1,7 @@
 'use strict';
 // Pedidos: el cliente describe un problema (con ayuda de la IA), los profesionales de su zona envían
 // presupuestos, el cliente elige y hablan por un chat interno ligado al pedido.
-const { chat: aiChat, aiEnabled } = require('./ai');
+const { chat: aiChat, aiProvider } = require('./ai');
 
 module.exports = function ordersModule(app, { db, auth, TRADES, now, num, str, parse, haversineKm, PRO_SELECT, proOut, pay, mailer, notify }) {
   db.exec(`
@@ -101,7 +101,7 @@ module.exports = function ordersModule(app, { db, auth, TRADES, now, num, str, p
     if (hits.size > 5000) hits.clear();
     return list.length > 20;
   };
-  app.get('/api/ai/status', (_req, res) => res.json({ ai: aiEnabled() ? 'claude' : 'basic' }));
+  app.get('/api/ai/status', (_req, res) => res.json({ ai: aiProvider() }));
   app.post('/api/ai/chat', async (req, res) => {
     if (limited(req.ip)) return fail(res, 429, 'Demasiadas consultas seguidas. Espera unos minutos.');
     try { res.json(await aiChat(req.body?.messages, TRADES)); }
