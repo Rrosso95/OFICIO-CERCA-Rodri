@@ -474,3 +474,5 @@ a.card { color: var(--ink); } a.card:hover { text-decoration: none; }
 .paybox.held { border-left-color: var(--teal); } .paybox.released { border-left-color: var(--teal); background: var(--teal-soft); }
 .paybox.disputed { border-left-color: var(--red); background: #fde8e8; } .paybox.refunded { border-left-color: #8a7f72; }
 .qform small { font-weight: 400; display: block; margin-top: 4px; }
+
+.push-row { margin: 8px 0 4px; } .push-row p { margin: 0; }

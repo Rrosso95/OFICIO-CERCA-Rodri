@@ -176,8 +176,9 @@ function unreadCount(userId) {
 let orders = null; // se inicializa más abajo (orders.js)
 const app = express();
 // Pagos (Stripe Connect o simulado). El webhook necesita el cuerpo sin parsear, así que va antes de express.json.
-const pay = require('./payments')({ db, now, DEMO_MODE });
 const mailer = require('./mailer')({ db, now });
+const notify = require('./notify')({ db, mailer, now });
+const pay = require('./payments')({ db, now, DEMO_MODE, notify });
 // Migración: alertas por email de pedidos nuevos (activadas por defecto)
 if (!db.prepare('PRAGMA table_info(users)').all().some((c) => c.name === 'email_notifs')) db.exec('ALTER TABLE users ADD COLUMN email_notifs INTEGER NOT NULL DEFAULT 1');
 if (!db.prepare('PRAGMA table_info(pros)').all().some((c) => c.name === 'email_alerts')) db.exec('ALTER TABLE pros ADD COLUMN email_alerts INTEGER NOT NULL DEFAULT 1');
@@ -476,8 +477,9 @@ app.post('/api/messages/:id/offer', auth, (req, res) => {
 });
 
 // --- pedidos, presupuestos e IA ---
-orders = require('./orders')(app, { db, auth, TRADES, now, num, str, parse, haversineKm, PRO_SELECT, proOut, pay, mailer });
+orders = require('./orders')(app, { db, auth, TRADES, now, num, str, parse, haversineKm, PRO_SELECT, proOut, pay, mailer, notify });
 pay.routes(app, auth);
+notify.routes(app, auth);
 
 app.put('/api/me/notifs', auth, (req, res) => {
   db.prepare('UPDATE users SET email_notifs = ? WHERE id = ?').run(req.body?.email_notifs === false ? 0 : 1, req.user.id);

@@ -11,7 +11,7 @@ const RELEASE_HOURS = Number(process.env.RELEASE_HOURS ?? 72);
 const r2 = (n) => Math.round(n * 100) / 100;
 const cents = (n) => Math.round(n * 100);
 
-module.exports = function createPayments({ db, now, DEMO_MODE }) {
+module.exports = function createPayments({ db, now, DEMO_MODE, notify = null }) {
   const key = process.env.STRIPE_SECRET_KEY || '';
   let mode = process.env.PAYMENTS_MODE || (key ? 'stripe' : DEMO_MODE ? 'simulated' : 'off');
   if (mode === 'stripe' && !key) { console.warn('PAYMENTS_MODE=stripe pero falta STRIPE_SECRET_KEY: pagos desactivados.'); mode = DEMO_MODE ? 'simulated' : 'off'; }
@@ -59,6 +59,8 @@ module.exports = function createPayments({ db, now, DEMO_MODE }) {
   const eur = (n) => `${Number(n).toLocaleString('es-ES')} €`;
   const origin = (req) => (process.env.PUBLIC_URL || process.env.RENDER_EXTERNAL_URL || `${req.protocol}://${req.get('host')}`).replace(/\/$/, '');
   const isAdmin = (u) => !!u && admins.includes(String(u.email).toLowerCase());
+  const title = (orderId) => get('SELECT title FROM orders WHERE id = ?', orderId)?.title || `pedido #${orderId}`;
+  const tell = (userId, subject, lines, orderId) => { if (notify) notify.notifyUser(userId, subject, lines, '', `/#/pedido/${orderId}`); };
 
   const getPayment = (orderId) => get('SELECT * FROM payments WHERE order_id = ?', orderId) || null;
 
@@ -90,6 +92,8 @@ module.exports = function createPayments({ db, now, DEMO_MODE }) {
     const t = now();
     run(`UPDATE payments SET status = 'held', paid_at = ?, updated_at = ?, payment_intent_id = COALESCE(?, payment_intent_id) WHERE id = ?`, t, t, ids.payment_intent || null, p.id);
     sys(orderId, p.pro_id, p.client_id, `💳 Pago de ${eur(p.amount)} recibido y retenido. Se liberará al profesional cuando el cliente confirme que el trabajo está hecho.`);
+    tell(p.pro_id, `Pago recibido: ya puedes empezar «${title(orderId)}»`, [`El cliente ha pagado ${eur(p.amount)}. Lo retenemos y te transferiremos ${eur(p.net)} cuando confirme que el trabajo está hecho.`], orderId);
+    tell(p.client_id, `Pago de ${eur(p.amount)} recibido`, [`Hemos recibido tu pago para «${title(orderId)}». Lo retenemos hasta que confirmes que el trabajo está hecho.`], orderId);
     return getPayment(orderId);
   }
 
@@ -143,6 +147,8 @@ module.exports = function createPayments({ db, now, DEMO_MODE }) {
     run("UPDATE payments SET status = 'released', transfer_id = ?, released_at = ?, updated_at = ? WHERE id = ?", transferId, t, t, p.id);
     finishOrder(orderId);
     sys(orderId, p.pro_id, p.client_id, `✅ Pago liberado al profesional (${eur(p.net)} tras la comisión de la plataforma). ¡Trabajo finalizado!`);
+    tell(p.pro_id, `Te hemos transferido ${eur(p.net)}`, [`El pago de «${title(orderId)}» se ha liberado: ${eur(p.amount)} menos la comisión de ${eur(p.fee)}. Puede tardar unos días en llegar a tu banco.`], orderId);
+    if (by !== 'client') tell(p.client_id, `Trabajo finalizado: «${title(orderId)}»`, [by === 'auto' ? 'Ha pasado el plazo sin reclamaciones, así que hemos liberado el pago al profesional.' : 'Hemos resuelto la reclamación liberando el pago al profesional.', '¿Qué tal fue? Puedes dejarle una reseña.'], orderId);
     return getPayment(orderId);
   }
 
@@ -156,6 +162,8 @@ module.exports = function createPayments({ db, now, DEMO_MODE }) {
     }
     run("UPDATE payments SET status = 'refunded', refund_id = ?, updated_at = ? WHERE id = ?", refundId, now(), p.id);
     sys(orderId, p.pro_id, p.client_id, `↩️ ${reason}: se han devuelto ${eur(p.amount)} al cliente.`);
+    tell(p.client_id, `Reembolso de ${eur(p.amount)}`, [`${reason}: te hemos devuelto ${eur(p.amount)} de «${title(orderId)}». Puede tardar de 5 a 10 días en aparecer en tu cuenta.`], orderId);
+    tell(p.pro_id, `Pago reembolsado al cliente: «${title(orderId)}»`, [`${reason}. El pago de ${eur(p.amount)} se ha devuelto al cliente.`], orderId);
     return getPayment(orderId);
   }
 
@@ -166,6 +174,7 @@ module.exports = function createPayments({ db, now, DEMO_MODE }) {
     const t = now(), at = new Date(Date.now() + RELEASE_HOURS * 3600 * 1000).toISOString();
     run('UPDATE payments SET pro_done_at = ?, release_at = ?, updated_at = ? WHERE id = ?', t, at, t, p.id);
     sys(order.id, p.pro_id, p.pro_id, `🏁 El profesional ha marcado el trabajo como terminado. El cliente puede confirmarlo o reclamar; si no hay reclamación, el pago se liberará automáticamente el ${new Date(at).toLocaleString('es-ES', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })}.`);
+    tell(p.client_id, `¿Está terminado «${order.title}»?`, [`El profesional ha marcado el trabajo como terminado. Confírmalo o abre una reclamación; si no, el pago se liberará automáticamente el ${new Date(at).toLocaleString('es-ES', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })}.`], order.id);
     return getPayment(order.id);
   }
 
@@ -174,6 +183,10 @@ module.exports = function createPayments({ db, now, DEMO_MODE }) {
     if (!p || p.status !== 'held') throw Object.assign(new Error('Solo se puede reclamar sobre un pago retenido'), { status: 409 });
     run("UPDATE payments SET status = 'disputed', dispute_reason = ?, updated_at = ? WHERE id = ?", String(reason).slice(0, 1000), now(), p.id);
     sys(order.id, p.pro_id, p.client_id, '⚠️ El cliente ha abierto una reclamación. El pago queda congelado hasta que lo revise el equipo de Oficio Cerca.');
+    tell(p.pro_id, `Reclamación abierta en «${order.title}»`, ['El cliente ha abierto una reclamación y el pago queda congelado hasta que la revisemos. Te contactaremos si necesitamos tu versión.'], order.id);
+    for (const a of all(`SELECT id FROM users WHERE lower(email) IN (${admins.map(() => '?').join(',') || "''"})`, ...admins)) {
+      if (notify) notify.notifyUser(a.id, `Nueva reclamación: pedido #${order.id}`, [`Motivo: ${String(reason).slice(0, 300)}`], '', '/#/admin');
+    }
     return getPayment(order.id);
   }
 

@@ -735,7 +735,47 @@ function fileToDataURL(file, max) {
   });
 }
 
+// ---------- notificaciones push en este dispositivo ----------
+const pushSupported = () => 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+function b64ToBytes(b64) {
+  const s = (b64 + '='.repeat((4 - (b64.length % 4)) % 4)).replace(/-/g, '+').replace(/_/g, '/');
+  return Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
+}
+async function currentPushSub() {
+  const reg = await navigator.serviceWorker.getRegistration('/');
+  return reg ? reg.pushManager.getSubscription() : null;
+}
+async function renderPushRow() {
+  const row = document.getElementById('pushRow');
+  if (!row) return;
+  if (!pushSupported()) { row.innerHTML = '<p class="muted small">Este navegador no admite notificaciones push. En iPhone, añade la web a la pantalla de inicio para recibirlas.</p>'; return; }
+  const sub = await currentPushSub().catch(() => null);
+  const blocked = Notification.permission === 'denied';
+  row.innerHTML = blocked
+    ? '<p class="muted small">Las notificaciones están bloqueadas en este navegador. Actívalas en los ajustes del sitio para recibirlas.</p>'
+    : `<button type="button" class="btn ghost small" id="pushBtn">${icon('bell')} ${sub ? 'Desactivar notificaciones en este dispositivo' : 'Activar notificaciones en este dispositivo'}</button>`;
+  const btn = document.getElementById('pushBtn');
+  if (btn) btn.onclick = async () => {
+    btn.disabled = true;
+    try {
+      if (sub) {
+        await api('/api/push/unsubscribe', { method: 'POST', body: { endpoint: sub.endpoint } });
+        await sub.unsubscribe(); toast('Notificaciones desactivadas en este dispositivo');
+      } else {
+        const reg = await navigator.serviceWorker.register('/sw.js', { scope: '/' });
+        if (await Notification.requestPermission() !== 'granted') throw new Error('No has dado permiso para mostrar notificaciones');
+        const { key } = await api('/api/push/key');
+        const s = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64ToBytes(key) });
+        await api('/api/push/subscribe', { method: 'POST', body: { subscription: s.toJSON() } });
+        toast('Notificaciones activadas en este dispositivo');
+      }
+    } catch (e) { toast(e.message, 'err'); }
+    renderPushRow();
+  };
+}
+
 function bindNotifs() {
+  renderPushRow();
   const el = document.getElementById('notifsOn');
   if (!el) return;
   el.onchange = async () => {
@@ -756,6 +796,7 @@ async function viewPanel() {
           <a class="tile" href="#/mensajes"><b>${icon('message-circle')} Mis mensajes</b><span>${state.unread ? `${state.unread} sin leer` : 'Tus conversaciones y propuestas'}</span></a>
         </div>
         <label class="check"><input type="checkbox" id="notifsOn" ${state.me.email_notifs !== false ? 'checked' : ''}> Avisarme por email de presupuestos y mensajes de mis pedidos</label>
+        <div id="pushRow" class="push-row"></div>
         <div class="pro-cta small"><div><h3>¿También ofreces un oficio?</h3><p>Activa tu perfil profesional con la misma cuenta.</p></div>
           <button class="btn light" id="become">Quiero ser profesional</button></div>
       </div>`;
@@ -842,6 +883,7 @@ async function viewPanel() {
             <label>Email de contacto<input name="contact_email" type="email" value="${esc(p.contact_email)}"></label>
           </div>
           <label class="check"><input type="checkbox" id="notifsOn" ${state.me.email_notifs !== false ? 'checked' : ''}> Avisarme por email de presupuestos y mensajes de mis pedidos</label>
+          <div id="pushRow" class="push-row"></div>
           ${state.pro ? `<label class="check"><input type="checkbox" id="alertsOn" ${p.email_alerts !== false ? 'checked' : ''}> Avisarme por email (${esc(state.me.email)}) cuando haya un pedido nuevo en mi zona</label>` : ''}
         </section>
 

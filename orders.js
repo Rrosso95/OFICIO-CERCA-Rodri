@@ -3,7 +3,7 @@
 // presupuestos, el cliente elige y hablan por un chat interno ligado al pedido.
 const { chat: aiChat, aiEnabled } = require('./ai');
 
-module.exports = function ordersModule(app, { db, auth, TRADES, now, num, str, parse, haversineKm, PRO_SELECT, proOut, pay, mailer }) {
+module.exports = function ordersModule(app, { db, auth, TRADES, now, num, str, parse, haversineKm, PRO_SELECT, proOut, pay, mailer, notify }) {
   db.exec(`
   CREATE TABLE IF NOT EXISTS orders (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -120,19 +120,13 @@ module.exports = function ordersModule(app, { db, auth, TRADES, now, num, str, p
           `Ver el pedido y enviar tu presupuesto: ${base}/#/pedido/${o.id}`, '',
           `Recibes este aviso porque tienes activadas las alertas de pedidos nuevos. Puedes desactivarlas en tu perfil profesional: ${base}/#/panel`, 'Oficio Cerca'].join('\n'),
       });
+      await notify.push(p.user_id, { title: `Nuevo pedido en tu zona (${km} km)`, body: o.title, url: `/#/pedido/${o.id}` });
     }
   }
 
   // Aviso a un usuario concreto (respeta su preferencia email_notifs). Nunca lanza.
   const baseOf = (req) => (process.env.PUBLIC_URL || process.env.RENDER_EXTERNAL_URL || `${req.protocol}://${req.get('host')}`).replace(/\/$/, '');
-  async function notifyUser(userId, subject, lines, base) {
-    try {
-      const u = get('SELECT email, name, email_notifs FROM users WHERE id = ?', userId);
-      if (!u || u.email_notifs === 0) return;
-      await mailer.send({ to: u.email, subject, text: [`Hola ${firstName(u.name)},`, '', ...lines, '',
-        `Puedes desactivar estos avisos en tu cuenta: ${base}/#/panel`, 'Oficio Cerca'].join('\n') });
-    } catch (e) { console.error('aviso:', e.message); }
-  }
+  const notifyUser = (...a) => notify.notifyUser(...a);
   // Mensajes de chat: un solo email por conversación hasta que el destinatario la lea
   function chatEmailDue(orderId, proId, userId) {
     const sent = get('SELECT sent_at FROM email_throttle WHERE order_id = ? AND pro_id = ? AND user_id = ?', orderId, proId, userId);
@@ -305,8 +299,7 @@ module.exports = function ordersModule(app, { db, auth, TRADES, now, num, str, p
       const total = Math.round(amount * 100) / 100, who = firstName(get('SELECT name FROM users WHERE id = ?', req.user.id)?.name);
       notifyUser(o.client_id, `Nuevo presupuesto para «${o.title}»: ${total} €`, [
         `${who} te ha enviado un presupuesto de ${total} € (${req.body.materials_included ? 'materiales incluidos' : 'sin materiales'}).`,
-        ...(str(req.body.message, 1000).trim() ? ['', `«${snippet(str(req.body.message, 1000).trim())}»`] : []), '',
-        `Compara los presupuestos y elige: ${baseOf(req)}/#/pedido/${o.id}`], baseOf(req));
+        ...(str(req.body.message, 1000).trim() ? ['', `«${snippet(str(req.body.message, 1000).trim())}»`] : [])], baseOf(req), `/#/pedido/${o.id}`);
     }
     res.json({ ok: true });
   });
@@ -343,8 +336,7 @@ module.exports = function ordersModule(app, { db, auth, TRADES, now, num, str, p
     if (pay.mode !== 'off') pay.ensureFor(get('SELECT * FROM orders WHERE id = ?', o.id));
     notifyUser(q.pro_id, `¡Te han elegido! «${o.title}»`, [
       `El cliente ha aceptado tu presupuesto de ${q.amount} € para «${o.title}».`,
-      ...(pay.mode !== 'off' ? ['El cliente debe pagar antes de que empieces el trabajo; lo verás en el pedido cuando el pago esté retenido.'] : ['Coordinad el día y la hora por el chat del pedido.']), '',
-      `Ver el pedido: ${baseOf(req)}/#/pedido/${o.id}`], baseOf(req));
+      ...(pay.mode !== 'off' ? ['El cliente debe pagar antes de que empieces el trabajo; te avisaremos cuando el pago esté retenido.'] : ['Coordinad el día y la hora por el chat del pedido.'])], baseOf(req), `/#/pedido/${o.id}`);
     res.json({ ok: true });
   });
 
@@ -421,8 +413,7 @@ module.exports = function ordersModule(app, { db, auth, TRADES, now, num, str, p
       run(`INSERT INTO email_throttle (order_id, pro_id, user_id, sent_at) VALUES (?,?,?,?)
         ON CONFLICT(order_id, pro_id, user_id) DO UPDATE SET sent_at = excluded.sent_at`, th.o.id, th.proId, to, now());
       notifyUser(to, `Mensaje nuevo sobre «${th.o.title}»`, [
-        `${firstName(req.user.name)} te ha escrito sobre «${th.o.title}»:`, '', `«${snippet(body)}»`, '',
-        `Responder: ${baseOf(req)}/#/pedido/${th.o.id}`], baseOf(req));
+        `${firstName(req.user.name)} te ha escrito sobre «${th.o.title}»:`, '', `«${snippet(body)}»`], baseOf(req), `/#/pedido/${th.o.id}`);
     }
     res.json({ ok: true });
   });
