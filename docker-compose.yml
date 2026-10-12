@@ -10,6 +10,18 @@ services:
       # Centro de los datos de ejemplo (por defecto Madrid)
       SEED_LAT: "40.4168"
       SEED_LNG: "-3.7038"
+      # Asistente de pedidos. Con clave de la API de Anthropic usa Claude; sin ella usa un clasificador básico por palabras clave.
+      # Ponla en tu entorno o en un archivo .env junto a este compose: ANTHROPIC_API_KEY=sk-ant-...
+      ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:-}"
+      AI_MODEL: "${AI_MODEL:-claude-opus-5-5}"
+      # Pagos con retención. Sin clave de Stripe y con DEMO_MODE=true funcionan en modo simulado (sin dinero real);
+      # sin clave y con DEMO_MODE=false quedan desactivados. Pon claves de TEST (sk_test_...) para probar Stripe.
+      STRIPE_SECRET_KEY: "${STRIPE_SECRET_KEY:-}"
+      STRIPE_WEBHOOK_SECRET: "${STRIPE_WEBHOOK_SECRET:-}"
+      PUBLIC_URL: "${PUBLIC_URL:-}"
+      PLATFORM_FEE_PCT: "${PLATFORM_FEE_PCT:-10}"
+      RELEASE_HOURS: "${RELEASE_HOURS:-72}"
+      ADMIN_EMAILS: "${ADMIN_EMAILS:-}"
     volumes:
       - oficios-data:/app/data
     restart: unless-stopped

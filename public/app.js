@@ -5,8 +5,8 @@ const $app = document.getElementById('app');
 const $nav = document.getElementById('nav');
 const state = {
   token: localStorage.getItem('token'),
-  me: null, pro: null, unread: 0,
-  trades: [], config: { demo: false },
+  me: null, pro: null, unread: 0, pending: { total: 0 },
+  trades: [], config: { demo: false, pay: { mode: 'off', fee_pct: 10, release_hours: 72 } }, isAdmin: false,
   loc: JSON.parse(localStorage.getItem('loc') || 'null'), // {lat,lng,label}
 };
 let maps = [];
@@ -156,22 +156,27 @@ function reveal() {
 
 // ---------- sesión y cabecera ----------
 async function loadMe() {
-  if (!state.token) { state.me = null; state.pro = null; state.unread = 0; return; }
+  if (!state.token) { state.me = null; state.pro = null; state.unread = 0; state.pending = { total: 0 }; return; }
   try {
     const d = await api('/api/me');
-    state.me = d.user; state.pro = d.pro; state.unread = d.unread;
+    state.me = d.user; state.pro = d.pro; state.unread = d.unread; state.pending = d.pending || { total: 0 }; state.isAdmin = !!d.is_admin;
   } catch { state.me = null; }
 }
 function logoutLocal() {
-  state.token = null; state.me = null; state.pro = null;
+  state.token = null; state.me = null; state.pro = null; state.pending = { total: 0 }; state.isAdmin = false;
   localStorage.removeItem('token');
   renderNav();
 }
 function renderNav() {
   const m = state.me;
   $nav.innerHTML = `
+    <a href="#/pedir">${icon('sparkles')} Pedir presupuestos</a>
     <a href="#/buscar">${icon('search')} Buscar</a>
+    <a href="/precios">${icon('euro')} Precios</a>
     ${m ? `
+      <a href="#/pedidos">${icon('receipt')} Pedidos${state.pending.total ? `<span class="badge">${state.pending.total}</span>` : ''}</a>
+      ${state.pro && state.config.pay.mode !== 'off' ? `<a href="#/cobros">${icon('euro')} Cobros</a>` : ''}
+      ${state.isAdmin ? `<a href="#/admin">${icon('shield-check')} Admin</a>` : ''}
       <a href="#/mensajes">${icon('message-circle')} Mensajes${state.unread ? `<span class="badge">${state.unread}</span>` : ''}</a>
       <a href="#/panel">${icon('user-round')} ${m.role === 'pro' ? 'Mi perfil profesional' : 'Mi cuenta'}</a>
       <a href="#" id="logout" class="muted">Salir</a>`
@@ -275,7 +280,14 @@ async function viewHome() {
     <section class="hero">
       <div class="hero-inner">
         <h1>El profesional que necesitas,<br><em>a la vuelta de la esquina.</em></h1>
-        <p class="lead">Fontaneros, gasistas, electricistas y más. Solo te mostramos a quien realmente se desplaza hasta tu casa, con reseñas de otros clientes.</p>
+        <p class="lead">Cuéntanos qué pasa en casa y recibe presupuestos de fontaneros, electricistas, gasistas y más. Solo te avisamos a quien realmente se desplaza hasta tu dirección.</p>
+        <form class="askhero" id="ask">
+          <label class="sr-only" for="askq">Cuéntanos qué pasa en casa</label>
+          <textarea id="askq" rows="2" maxlength="1500" placeholder="Ej.: Se ha atascado el fregadero de la cocina y no baja el agua"></textarea>
+          <button class="btn big">${icon('sparkles')} Pedir presupuestos</button>
+        </form>
+        <div class="quick" id="hquick">${QUICK.map((t) => `<button type="button" class="chip-btn">${esc(t)}</button>`).join('')}</div>
+        <p class="or-search">¿Prefieres elegir tú? Busca por oficio y zona:</p>
         <form class="searchbar" id="hs">
           <select name="trade" aria-label="Oficio">${tradeOptions('')}</select>
           ${locationPicker('hloc')}
@@ -284,7 +296,7 @@ async function viewHome() {
         <div class="proof" id="proof">
           <span>${icon('users')} <b id="st-pros">—</b> profesionales</span>
           <span>${icon('star')} <b id="st-avg">—</b> valoración media</span>
-          <span>${icon('circle-check')} Gratis y sin comisiones</span>
+          <span>${icon('circle-check')} Gratis para clientes</span>
         </div>
       </div>
     </section>
@@ -296,11 +308,18 @@ async function viewHome() {
 
       <div id="featured"></div>
 
+      <h2 class="section-title reveal">Precios y herramientas gratis</h2>
+      <div class="how reveal">
+        <div><h3>¿Cuánto cuesta?</h3><p>Cuéntanos qué necesitas y te damos el rango habitual de mano de obra.</p><a href="#/presupuestador">Calcular →</a></div>
+        <div><h3>¿Está bien este presupuesto?</h3><p>Compáralo con lo que suele costar ese trabajo antes de aceptarlo.</p><a href="#/comparador">Comparar →</a></div>
+        <div><h3>Precios por oficio</h3><p>Fontanero, electricista, cerrajero, pintor… con rangos y preguntas frecuentes.</p><a href="/precios">Ver precios →</a></div>
+      </div>
+
       <h2 class="section-title reveal" id="como-funciona">Cómo funciona</h2>
       <div class="how reveal">
-        <div><b>1</b><h3>Dinos dónde estás</h3><p>Escribe tu dirección o deja que el navegador la detecte.</p></div>
-        <div><b>2</b><h3>Compara</h3><p>Valoraciones, precio por hora, experiencia y si atienden urgencias.</p></div>
-        <div><b>3</b><h3>Habla y acuerda</h3><p>Escríbele, recibe propuestas de precio y acéptalas desde el chat.</p></div>
+        <div><b>1</b><h3>Cuéntanos qué pasa</h3><p>Nuestro asistente te hace un par de preguntas y prepara el pedido. También puedes buscar tú por oficio y zona.</p></div>
+        <div><b>2</b><h3>Recibe presupuestos</h3><p>Los profesionales verificados que llegan a tu dirección te envían su precio. Compara valoraciones, materiales y disponibilidad.</p></div>
+        <div><b>3</b><h3>Elige y habla</h3><p>Acepta el presupuesto que prefieras y coordina el día y la hora por el chat del pedido.</p></div>
       </div>
 
       <div class="trust reveal">
@@ -316,10 +335,15 @@ async function viewHome() {
 
       <h2 class="section-title reveal">Preguntas frecuentes</h2>
       <div class="faq reveal">
-        <details><summary>¿Es gratis?</summary><p>Sí. Buscar, comparar y contactar con profesionales es gratis. Tampoco cobramos comisión a los profesionales por los trabajos que acuerdan.</p></details>
+        <details><summary>¿Es gratis?</summary><p>${state.config.pay.mode === 'off'
+          ? 'Sí. Buscar, comparar y contactar con profesionales es gratis. Tampoco cobramos comisión a los profesionales por los trabajos que acuerdan.'
+          : `Para ti sí: pedir presupuestos, comparar y contactar es gratis y pagas exactamente el presupuesto que aceptes. El profesional paga una comisión del ${state.config.pay.fee_pct} % solo sobre los trabajos que cobra a través de la plataforma.`}</p></details>
+        ${state.config.pay.mode === 'off' ? '' : `<details><summary>¿Cómo funciona el pago?</summary><p>Al aceptar un presupuesto pagas en la plataforma y retenemos el dinero. Se libera al profesional cuando confirmas que el trabajo está hecho (o ${state.config.pay.release_hours} horas después de que él lo marque como terminado, si no reclamas). Si algo sale mal, abre una reclamación y el pago queda congelado hasta que lo revisemos.</p></details>`}
         <details><summary>¿Cómo se verifican los profesionales?</summary><p>Revisamos su identidad, su licencia o carné cuando el oficio lo exige y su seguro de responsabilidad civil. Los que pasan la revisión llevan la insignia «Verificado».</p></details>
         <details><summary>¿Por qué no veo a todos los profesionales de mi ciudad?</summary><p>Cada profesional indica hasta dónde se desplaza. Solo te mostramos a quienes llegan a tu dirección, para que no pierdas el tiempo.</p></details>
-        <details><summary>¿Cómo acuerdo el precio?</summary><p>Desde el chat, cualquiera de los dos puede enviar una propuesta de precio. La otra parte la acepta o la rechaza y queda registrada en la conversación.</p></details>
+        <details><summary>¿Cómo funciona pedir presupuestos?</summary><p>Cuentas tu problema al asistente (puedes añadir fotos), publicas el pedido y los profesionales de tu zona y oficio te envían presupuestos. Tú eliges, aceptas y coordináis por el chat del pedido. Pedir es gratis y sin compromiso.</p></details>
+        <details><summary>¿La IA decide algo por mí?</summary><p>No. El asistente solo te ayuda a describir el problema y a elegir el tipo de profesional. Cualquier precio que te muestre es una referencia orientativa de mano de obra, no un presupuesto: el precio real lo ponen los profesionales.</p></details>
+        <details><summary>¿Cómo acuerdo el precio?</summary><p>Con los presupuestos de tu pedido. Si prefieres elegir tú a un profesional concreto, también puedes escribirle desde su perfil y acordar una propuesta de precio en el chat.</p></details>
         <details><summary>¿Qué pasa si hay un problema con el trabajo?</summary><p>Habla primero con el profesional desde el chat. Después deja una reseña honesta: el profesional puede responder públicamente. Si crees que un perfil incumple las normas, escríbenos desde la página de contacto.</p></details>
       </div>
 
@@ -334,6 +358,10 @@ async function viewHome() {
     catch (e) { toast(e.message, 'err'); }
   };
   document.getElementById('hs').onsubmit = (e) => { e.preventDefault(); doSearch(e.target.trade.value); };
+  const askNow = (text) => { const t = String(text || '').trim(); go(t ? `#/pedir?${qs({ q: t })}` : '#/pedir'); };
+  document.getElementById('ask').onsubmit = (e) => { e.preventDefault(); askNow(document.getElementById('askq').value); };
+  document.getElementById('askq').onkeydown = (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); askNow(e.target.value); } };
+  document.querySelectorAll('#hquick button').forEach((b) => (b.onclick = () => askNow(b.textContent)));
   document.querySelectorAll('.cat').forEach((b) => (b.onclick = () => doSearch(b.dataset.t)));
   reveal();
 
@@ -969,29 +997,34 @@ function viewProfesionales() {
   $app.innerHTML = `
     <section class="hero pro-hero">
       <div class="hero-inner">
-        <h1>Consigue clientes <em>en tu barrio</em>, sin pagar comisiones.</h1>
+        <h1>Consigue clientes <em>en tu barrio</em>, sin cuotas ni permanencia.</h1>
         <p class="lead">Crea tu perfil en 5 minutos, marca hasta dónde te desplazas y recibe mensajes de clientes que están dentro de tu zona.</p>
         <a class="btn big" href="#/registro?role=pro">Crear mi perfil gratis</a>
       </div>
     </section>
     <section class="wrap">
       <div class="benefits reveal">
-        <div>${icon('euro')}<h3>Sin comisiones</h3><p>El precio lo acuerdas tú con el cliente. No nos quedamos con un porcentaje de tu trabajo.</p></div>
+        <div>${icon('euro')}<h3>${state.config.pay.mode === 'off' ? 'Sin comisiones' : 'Solo pagas si cobras'}</h3><p>${state.config.pay.mode === 'off'
+          ? 'El precio lo acuerdas tú con el cliente. No nos quedamos con un porcentaje de tu trabajo.'
+          : `Crear tu perfil y recibir pedidos es gratis. Solo cobramos un ${state.config.pay.fee_pct} % de los trabajos que cobras por la plataforma, con el pago ya garantizado por el cliente.`}</p></div>
         <div>${icon('map-pin')}<h3>Solo clientes de tu zona</h3><p>Tú decides el radio. Nadie de fuera de tu círculo te encontrará, así que no pierdes tiempo en desplazamientos.</p></div>
         <div>${icon('star')}<h3>Tu reputación trabaja por ti</h3><p>Cada reseña buena te sube en los resultados de “Mejor valorados”. Puedes responder públicamente a cualquier opinión.</p></div>
-        <div>${icon('message-circle')}<h3>Presupuestos desde el chat</h3><p>Envía propuestas de precio que el cliente acepta con un clic. Todo queda por escrito.</p></div>
+        <div>${icon('receipt')}<h3>Pedidos de tu zona</h3><p>Recibes los pedidos de clientes de tu oficio que están dentro de tu radio, envías tu presupuesto y, si te eligen, coordináis por el chat del pedido.</p></div>
       </div>
 
       <h2 class="section-title reveal">Cómo te llegan los clientes</h2>
       <div class="how reveal">
-        <div><b>1</b><h3>El cliente busca</h3><p>Elige tu oficio y escribe su dirección o usa su ubicación.</p></div>
+        <div><b>1</b><h3>El cliente pide</h3><p>Cuenta su problema al asistente o busca por oficio y dirección.</p></div>
         <div><b>2</b><h3>Apareces si llegas</h3><p>Si su dirección está dentro de tu radio, sales en la lista y en el mapa, con tus reseñas y precio orientativo.</p></div>
-        <div><b>3</b><h3>Te escribe</h3><p>Recibes el mensaje en tu bandeja y, si quieres, le mandas una propuesta de precio.</p></div>
+        <div><b>3</b><h3>Te elige</h3><p>Ves los pedidos nuevos de tu zona, envías tu presupuesto y, si el cliente lo acepta, hablas con él por el chat. También puede escribirte desde tu perfil.</p></div>
       </div>
 
       <h2 class="section-title reveal">Preguntas de profesionales</h2>
       <div class="faq reveal">
-        <details><summary>¿Cuánto cuesta?</summary><p>Crear el perfil y recibir clientes es gratis, y no cobramos comisión por los trabajos.</p></details>
+        <details><summary>¿Cuánto cuesta?</summary><p>${state.config.pay.mode === 'off'
+          ? 'Crear el perfil y recibir clientes es gratis, y no cobramos comisión por los trabajos.'
+          : `Crear el perfil y recibir clientes es gratis. Solo hay una comisión del ${state.config.pay.fee_pct} % sobre los trabajos que cobras a través de la plataforma.`}</p></details>
+        ${state.config.pay.mode === 'off' ? '' : '<details><summary>¿Cuándo cobro?</summary><p>El cliente paga al aceptar tu presupuesto y retenemos el dinero. Cuando termina el trabajo y el cliente lo confirma, te lo transferimos (si lo marcas como terminado y no hay reclamación, se libera solo pasado el plazo). Necesitas configurar tus cobros una vez.</p></details>'}
         <details><summary>¿Cómo consigo la insignia «Verificado»?</summary><p>Envíanos tu documento de identidad, tu licencia o carné si tu oficio lo exige y tu seguro de responsabilidad civil desde la página de contacto. Los revisamos y activamos la insignia.</p></details>
         <details><summary>¿Puedo pausar mi perfil?</summary><p>Sí. Desmarca «Perfil visible en búsquedas» en tu panel cuando estés de vacaciones o con la agenda llena.</p></details>
         <details><summary>¿Quién ve mi teléfono?</summary><p>Solo los usuarios registrados. Así evitas llamadas de spam y sabes que quien te contacta tiene una cuenta.</p></details>
@@ -1020,6 +1053,16 @@ const LEGAL = {
     <h2>Para qué</h2><p>Para prestar el servicio: mostrar perfiles, permitir el contacto y las reseñas. Base legal: ejecución del contrato (art. 6.1.b RGPD).</p>
     <h2>Con quién se comparten</h2><p>Los datos del perfil profesional son públicos. El contacto directo solo lo ven usuarios registrados. Usamos OpenStreetMap/Nominatim y Photon para mapas y direcciones, que reciben el texto de búsqueda. Alojamiento: [proveedor de hosting].</p>
     <h2>Tus derechos</h2><p>Puedes acceder, rectificar, suprimir, oponerte, limitar y portar tus datos escribiendo a [email de contacto]. También puedes reclamar ante la Agencia Española de Protección de Datos (aepd.es).</p>`],
+  condiciones: ['Condiciones de pago y garantía', () => {
+    const c = state.config.pay;
+    return `<div class="notice">Borrador pendiente de revisión legal. Completa los datos entre [corchetes] y que lo revise un profesional antes de publicar.</div>
+    <h2>Qué es Oficio Cerca</h2><p>Oficio Cerca es una plataforma de intermediación entre personas que necesitan un servicio («clientes») y profesionales autónomos que lo prestan. No presta los servicios ni es parte del contrato entre ambos.</p>
+    <h2>Pago retenido</h2><p>Cuando el cliente acepta un presupuesto, paga su importe a través de la plataforma. [Titular] retiene el pago hasta que el trabajo se confirma. ${c.mode === 'off' ? 'Actualmente los pagos están desactivados.' : ''}</p>
+    <h2>Comisión</h2><p>El cliente paga exactamente el importe del presupuesto aceptado. La plataforma cobra al profesional una comisión del ${c.fee_pct} % sobre ese importe, que se descuenta al liberar el pago. La comisión se factura al profesional.</p>
+    <h2>Liberación del pago</h2><ul><li>Cuando el cliente confirma que el trabajo está hecho, el pago se libera al profesional.</li><li>Si el profesional marca el trabajo como terminado y el cliente no responde ni reclama en ${c.release_hours} horas, el pago se libera automáticamente.</li></ul>
+    <h2>Reclamaciones y reembolsos</h2><ul><li>Mientras el pago está retenido, el cliente puede abrir una reclamación indicando el motivo. El pago queda congelado hasta que lo revise la plataforma, que podrá reembolsar al cliente o liberar al profesional.</li><li>Si el cliente cancela antes de que el profesional marque el trabajo como terminado, se le reembolsa el importe íntegro.</li><li>Las reclamaciones sobre pagos ya liberados se dirigen al profesional; esto no limita los derechos que la ley reconoce al consumidor.</li></ul>
+    <h2>Importante</h2><p>Para estar cubierto, el pago y la comunicación deben hacerse dentro de la plataforma. Los trabajos o materiales fuera del presupuesto aceptado no están incluidos.</p>`;
+  }],
   cookies: ['Política de cookies', `
     <p>Oficio Cerca no usa cookies de publicidad ni de analítica.</p>
     <p>Solo guardamos en el almacenamiento local de tu navegador lo imprescindible para que la web funcione: tu sesión iniciada, la última ubicación que buscaste y que ya has visto este aviso. Al ser técnicos y necesarios, no requieren consentimiento según el art. 22.2 de la LSSI-CE.</p>
@@ -1028,7 +1071,7 @@ const LEGAL = {
 function viewLegal(slug) {
   const page = LEGAL[slug];
   if (!page) return viewNotFound();
-  $app.innerHTML = `<div class="wrap narrow legal"><h1>${page[0]}</h1>${page[1]}<p class="muted small">Última actualización: ${new Date().getFullYear()}</p></div>`;
+  $app.innerHTML = `<div class="wrap narrow legal"><h1>${page[0]}</h1>${typeof page[1] === 'function' ? page[1]() : page[1]}<p class="muted small">Última actualización: ${new Date().getFullYear()}</p></div>`;
 }
 function viewContacto() {
   $app.innerHTML = `
@@ -1062,6 +1105,13 @@ async function route() {
   document.body.classList.toggle('full', parts[0] === 'buscar' || parts[0] === 'mensajes');
   switch (parts[0]) {
     case undefined: return viewHome();
+    case 'presupuestador': return viewPresupuestador(query);
+    case 'comparador': return viewComparador(query);
+    case 'pedir': return viewPedir(query);
+    case 'pedidos': return viewPedidos(query);
+    case 'pedido': return viewPedido(parts[1], query);
+    case 'cobros': return viewCobros(query);
+    case 'admin': return viewAdmin();
     case 'buscar': return viewSearch(query);
     case 'pro': return viewPro(parts[1]);
     case 'login': return viewAuth('login', query);
@@ -1080,6 +1130,7 @@ async function route() {
   const boot = async () => {
     try {
       [state.trades, state.config] = await Promise.all([api('/api/trades', { timeout: 60000 }), api('/api/config', { timeout: 60000 }).catch(() => ({ demo: false }))]);
+      state.config.pay = state.config.pay || { mode: 'off', fee_pct: 10, release_hours: 72 };
     } catch (e) {
       $app.innerHTML = `<div class="wrap">${errorBox(e.message)}</div>`;
       bindRetry($app, boot);
@@ -1092,6 +1143,7 @@ async function route() {
     await loadMe();
     route();
     cookieNotice();
+    setInterval(async () => { if (state.token && !document.hidden) { await loadMe(); renderNav(); } }, 30000);
   };
   boot();
 })();

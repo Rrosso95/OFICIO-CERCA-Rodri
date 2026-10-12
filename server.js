@@ -173,7 +173,11 @@ function unreadCount(userId) {
 }
 
 // ---------- app ----------
+let orders = null; // se inicializa más abajo (orders.js)
 const app = express();
+// Pagos (Stripe Connect o simulado). El webhook necesita el cuerpo sin parsear, así que va antes de express.json.
+const pay = require('./payments')({ db, now, DEMO_MODE });
+app.post('/api/stripe/webhook', express.raw({ type: 'application/json' }), pay.webhook);
 app.use(express.json({ limit: '8mb' }));
 app.set('trust proxy', true);
 // index.html con la URL pública para Open Graph / canonical
@@ -207,7 +211,7 @@ function newSession(userId) {
 
 app.get('/api/health', (_req, res) => res.json({ ok: true }));
 app.get('/api/trades', (_req, res) => res.json(TRADES));
-app.get('/api/config', (_req, res) => res.json({ demo: DEMO_MODE }));
+app.get('/api/config', (_req, res) => res.json({ demo: DEMO_MODE, pay: { mode: pay.mode, fee_pct: pay.feePct, release_hours: pay.releaseHours } }));
 
 app.get('/api/stats', (_req, res) => {
   const pros = db.prepare('SELECT COUNT(*) AS c FROM pros WHERE active = 1').get().c;
@@ -272,7 +276,7 @@ app.post('/api/auth/logout', auth, (req, res) => {
 
 app.get('/api/me', auth, (req, res) => {
   const pro = db.prepare(`${PRO_SELECT} WHERE p.user_id = ?`).get(req.user.id);
-  res.json({ user: userOut(req.user), pro: proOut(pro, { full: true }), unread: unreadCount(req.user.id) });
+  res.json({ user: userOut(req.user), pro: proOut(pro, { full: true }), unread: unreadCount(req.user.id), pending: orders.badges(req.user.id), is_admin: pay.isAdmin(req.user), pay_mode: pay.mode });
 });
 
 app.post('/api/me/become-pro', auth, (req, res) => {
@@ -467,10 +471,23 @@ app.post('/api/messages/:id/offer', auth, (req, res) => {
   res.json({ ok: true });
 });
 
+// --- pedidos, presupuestos e IA ---
+orders = require('./orders')(app, { db, auth, TRADES, now, num, str, parse, haversineKm, PRO_SELECT, proOut, pay });
+pay.routes(app, auth);
+
+// --- precios, páginas por oficio/ciudad (SEO) y herramientas gratuitas ---
+require('./seo')(app, { db, PRO_SELECT, proOut, haversineKm, parse, TRADES });
+
 app.use('/api', (_req, res) => res.status(404).json({ error: 'No encontrado' }));
 
 // ---------- seed ----------
-if (DEMO_MODE) require('./seed')(db, { hashPassword, TRADES });
+if (DEMO_MODE) {
+  const seed = require('./seed');
+  seed(db, { hashPassword, TRADES });
+  seed.orders(db, { payMode: pay.mode });
+  if (pay.isAdmin({ email: 'admin@demo.com' }) && !db.prepare("SELECT 1 FROM users WHERE email = 'admin@demo.com'").get())
+    db.prepare("INSERT INTO users (email, pass_hash, name, role, created_at) VALUES ('admin@demo.com', ?, 'Administración', 'client', ?)").run(hashPassword('demo1234'), now());
+}
 
 // Keep-alive para Render gratis: se pide a sí mismo por la URL pública cada 10 min para no dormirse.
 // Render define RENDER_EXTERNAL_URL automáticamente. Desactivar con KEEP_ALIVE=false.
