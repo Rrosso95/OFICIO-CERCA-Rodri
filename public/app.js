@@ -898,7 +898,9 @@ async function viewPanel() {
           <button class="btn big">Guardar perfil</button>
         </div>
       </form>
+      ${state.pro ? '<section class="osec verif" id="verifBox"></section>' : ''}
     </div>`;
+  renderVerif();
 
   const f = document.getElementById('pf');
   const start = p.base_lat ? { lat: p.base_lat, lng: p.base_lng } : DEFAULT_CENTER;
@@ -1085,7 +1087,7 @@ function viewProfesionales() {
           ? 'Crear el perfil y recibir clientes es gratis, y no cobramos comisión por los trabajos.'
           : `Crear el perfil y recibir clientes es gratis. Solo hay una comisión del ${state.config.pay.fee_pct} % sobre los trabajos que cobras a través de la plataforma.`}</p></details>
         ${state.config.pay.mode === 'off' ? '' : '<details><summary>¿Cuándo cobro?</summary><p>El cliente paga al aceptar tu presupuesto y retenemos el dinero. Cuando termina el trabajo y el cliente lo confirma, te lo transferimos (si lo marcas como terminado y no hay reclamación, se libera solo pasado el plazo). Necesitas configurar tus cobros una vez.</p></details>'}
-        <details><summary>¿Cómo consigo la insignia «Verificado»?</summary><p>Envíanos tu documento de identidad, tu licencia o carné si tu oficio lo exige y tu seguro de responsabilidad civil desde la página de contacto. Los revisamos y activamos la insignia.</p></details>
+        <details><summary>¿Cómo consigo la insignia «Verificado»?</summary><p>Desde tu panel, en «Verificación», sube tu documento de identidad, tu seguro de responsabilidad civil y tu carné si tu oficio lo exige (gas, electricidad, climatización). Los revisamos, activamos la insignia y borramos los documentos.</p></details>
         <details><summary>¿Puedo pausar mi perfil?</summary><p>Sí. Desmarca «Perfil visible en búsquedas» en tu panel cuando estés de vacaciones o con la agenda llena.</p></details>
         <details><summary>¿Quién ve mi teléfono?</summary><p>Solo los usuarios registrados. Así evitas llamadas de spam y sabes que quien te contacta tiene una cuenta.</p></details>
         <details><summary>¿Puedo ofrecer varios oficios?</summary><p>Sí. Eliges un oficio principal y puedes marcar todos los secundarios que hagas.</p></details>
@@ -1109,7 +1111,7 @@ const LEGAL = {
   privacidad: ['Política de privacidad', `
     <p>Esta política explica cómo tratamos tus datos personales conforme al Reglamento (UE) 2016/679 (RGPD) y la Ley Orgánica 3/2018 (LOPDGDD).</p>
     <h2>Responsable</h2><p>[Nombre o razón social], NIF [NIF], [email de contacto].</p>
-    <h2>Qué datos tratamos</h2><ul><li>Datos de cuenta: nombre, email y contraseña (cifrada).</li><li>Datos del perfil profesional que decidas publicar: foto, descripción, zona, teléfono, etc.</li><li>Mensajes y reseñas que envías.</li><li>Ubicación: solo cuando la escribes o autorizas al navegador, para buscar profesionales cercanos. No la guardamos en el servidor salvo la zona base de los profesionales.</li></ul>
+    <h2>Qué datos tratamos</h2><ul><li>Datos de cuenta: nombre, email y contraseña (cifrada).</li><li>Datos del perfil profesional que decidas publicar: foto, descripción, zona, teléfono, etc.</li><li>Mensajes y reseñas que envías.</li><li>Profesionales que piden la verificación: documento de identidad, seguro y carné profesional. Solo los ve el equipo de administración para comprobar la identidad y se eliminan al terminar la revisión.</li><li>Pagos: los gestiona nuestro proveedor de pagos (Stripe); no guardamos los datos de tu tarjeta.</li><li>Ubicación: solo cuando la escribes o autorizas al navegador, para buscar profesionales cercanos. No la guardamos en el servidor salvo la zona base de los profesionales.</li></ul>
     <h2>Para qué</h2><p>Para prestar el servicio: mostrar perfiles, permitir el contacto y las reseñas. Base legal: ejecución del contrato (art. 6.1.b RGPD).</p>
     <h2>Con quién se comparten</h2><p>Los datos del perfil profesional son públicos. El contacto directo solo lo ven usuarios registrados. Usamos OpenStreetMap/Nominatim y Photon para mapas y direcciones, que reciben el texto de búsqueda. Alojamiento: [proveedor de hosting].</p>
     <h2>Tus derechos</h2><p>Puedes acceder, rectificar, suprimir, oponerte, limitar y portar tus datos escribiendo a [email de contacto]. También puedes reclamar ante la Agencia Española de Protección de Datos (aepd.es).</p>`],
@@ -1171,7 +1173,7 @@ async function route() {
     case 'pedidos': return viewPedidos(query);
     case 'pedido': return viewPedido(parts[1], query);
     case 'cobros': return viewCobros(query);
-    case 'admin': return viewAdmin();
+    case 'admin': return viewAdmin(query);
     case 'buscar': return viewSearch(query);
     case 'pro': return viewPro(parts[1]);
     case 'login': return viewAuth('login', query);

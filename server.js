@@ -183,6 +183,8 @@ const pay = require('./payments')({ db, now, DEMO_MODE, notify });
 if (!db.prepare('PRAGMA table_info(users)').all().some((c) => c.name === 'email_notifs')) db.exec('ALTER TABLE users ADD COLUMN email_notifs INTEGER NOT NULL DEFAULT 1');
 if (!db.prepare('PRAGMA table_info(pros)').all().some((c) => c.name === 'email_alerts')) db.exec('ALTER TABLE pros ADD COLUMN email_alerts INTEGER NOT NULL DEFAULT 1');
 app.post('/api/stripe/webhook', express.raw({ type: 'application/json' }), pay.webhook);
+// Los documentos de verificación pueden pesar más que el resto de peticiones
+app.use('/api/verification', express.json({ limit: '20mb' }));
 app.use(express.json({ limit: '8mb' }));
 app.set('trust proxy', true);
 // index.html con la URL pública para Open Graph / canonical
@@ -480,6 +482,7 @@ app.post('/api/messages/:id/offer', auth, (req, res) => {
 orders = require('./orders')(app, { db, auth, TRADES, now, num, str, parse, haversineKm, PRO_SELECT, proOut, pay, mailer, notify });
 pay.routes(app, auth);
 notify.routes(app, auth);
+require('./verification')(app, { db, auth, now, parse, dataDir: path.dirname(DB_PATH), isAdmin: pay.isAdmin, notify });
 
 app.put('/api/me/notifs', auth, (req, res) => {
   db.prepare('UPDATE users SET email_notifs = ? WHERE id = ?').run(req.body?.email_notifs === false ? 0 : 1, req.user.id);

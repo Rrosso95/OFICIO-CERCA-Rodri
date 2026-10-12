@@ -476,3 +476,5 @@ a.card { color: var(--ink); } a.card:hover { text-decoration: none; }
 .qform small { font-weight: 400; display: block; margin-top: 4px; }
 
 .push-row { margin: 8px 0 4px; } .push-row p { margin: 0; }
+.doc-frame { width: min(900px, 92vw); height: 88vh; border: 0; border-radius: 12px; background: #fff; }
+.panel .osec.verif { margin-top: 18px; }

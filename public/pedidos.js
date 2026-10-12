@@ -496,27 +496,125 @@ async function viewCobros(query) {
   if (query.return) toast(st.ready ? 'Cobros activados' : 'Aún falta completar algún paso');
 }
 
-// ---------- administración: pagos y reclamaciones ----------
-async function viewAdmin() {
+// ---------- verificación documental (panel del profesional) ----------
+function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(r.result);
+    r.onerror = () => reject(new Error('No se pudo leer el archivo'));
+    r.readAsDataURL(file);
+  });
+}
+async function renderVerif() {
+  const box = document.getElementById('verifBox');
+  if (!box) return;
+  let v;
+  try { v = await api('/api/verification/me'); } catch (e) { box.innerHTML = `<h2>Verificación</h2><p class="muted">${esc(e.message)}</p>`; return; }
+  const head = `<h2>${icon('badge-check')} Verificación</h2>`;
+  if (v.status === 'pending') {
+    box.innerHTML = `${head}<p>Recibimos tus documentos el ${fmtDate(v.submitted_at)}. Los estamos revisando y te avisaremos por email.</p>`;
+    return;
+  }
+  if (v.verified) {
+    box.innerHTML = `${head}<p class="ok-text">${icon('check')} Tu perfil está verificado y muestra la insignia «Verificado».</p>`;
+    return;
+  }
+  box.innerHTML = `${head}
+    <p class="muted">Los perfiles verificados generan más confianza y aparecen con la insignia «Verificado». Envíanos:</p>
+    ${v.status === 'rejected' ? `<div class="notice"><b>No pudimos verificar tu perfil.</b> ${esc(v.review_note)}</div>` : ''}
+    <form id="vf" class="qform">
+      ${v.required.map((r) => `<label>${esc(r.label)}<input type="file" accept="image/jpeg,image/png,image/webp,application/pdf" data-kind="${r.kind}" required></label>`).join('')}
+      <p class="muted small">Foto o PDF, máximo 4 MB cada uno. Solo los ve el equipo de Oficio Cerca para comprobar tu identidad y se borran en cuanto los revisamos.</p>
+      <button class="btn">Enviar para revisión</button>
+    </form>`;
+  const f = document.getElementById('vf');
+  f.onsubmit = async (e) => {
+    e.preventDefault();
+    const btn = f.querySelector('button');
+    btn.disabled = true; btn.textContent = 'Enviando…';
+    try {
+      const docs = [];
+      for (const input of f.querySelectorAll('input[type=file]')) {
+        const file = input.files[0];
+        if (!file) throw new Error('Adjunta todos los documentos');
+        if (file.type === 'application/pdf') {
+          if (file.size > 4 * 1024 * 1024) throw new Error(`${file.name}: el PDF debe ocupar menos de 4 MB`);
+          docs.push({ kind: input.dataset.kind, name: file.name, mime: 'application/pdf', data: await fileToBase64(file) });
+        } else {
+          docs.push({ kind: input.dataset.kind, name: file.name, mime: 'image/jpeg', data: await fileToDataURL(file, 1800) });
+        }
+      }
+      await api('/api/verification', { method: 'POST', body: { docs }, timeout: 60000 });
+      toast('Documentos enviados. Te avisaremos cuando los revisemos.');
+      renderVerif();
+    } catch (err) { toast(err.message, 'err'); btn.disabled = false; btn.textContent = 'Enviar para revisión'; }
+  };
+}
+
+// ---------- administración: pagos, reclamaciones y verificaciones ----------
+async function viewAdmin(query = {}) {
   if (!state.me) return go(`#/login?next=${encodeURIComponent('#/admin')}`);
+  const tab = query.tab === 'verificaciones' ? 'verificaciones' : 'pagos';
   $app.innerHTML = '<div class="wrap empty"><div class="spinner"></div></div>';
   let rows;
-  try { rows = await api('/api/admin/payments'); } catch (e) { $app.innerHTML = `<div class="wrap"><div class="empty"><h3>${esc(e.message)}</h3></div></div>`; return; }
-  const LABEL = { pending: 'Pendiente de pago', held: 'Retenido', disputed: 'En reclamación', released: 'Liberado', refunded: 'Reembolsado' };
+  try { rows = await api(tab === 'pagos' ? '/api/admin/payments' : '/api/admin/verifications'); }
+  catch (e) { $app.innerHTML = `<div class="wrap"><div class="empty"><h3>${esc(e.message)}</h3></div></div>`; return; }
+  const tabs = `<div class="tabs" role="tablist">${[['pagos', 'Pagos y reclamaciones'], ['verificaciones', 'Verificaciones']]
+    .map(([k, l]) => `<a role="tab" aria-selected="${k === tab}" class="${k === tab ? 'on' : ''}" href="#/admin?tab=${k}">${l}</a>`).join('')}</div>`;
+
+  if (tab === 'pagos') {
+    const LABEL = { pending: 'Pendiente de pago', held: 'Retenido', disputed: 'En reclamación', released: 'Liberado', refunded: 'Reembolsado' };
+    $app.innerHTML = `
+      <div class="wrap narrow">
+        <h1>Administración</h1>${tabs}
+        <div class="olist">${rows.length ? rows.map((p) => `
+          <div class="ocard">
+            <div class="oc-top"><b>#${p.order_id} · ${esc(p.title)}</b><span class="pill ${p.status === 'disputed' ? 'cancelled' : p.status === 'held' ? 'taken' : 'open'}">${LABEL[p.status]}</span></div>
+            <div class="meta"><span>Cliente: ${esc(p.client_name)}</span><span>Profesional: ${esc(p.pro_name)}</span><span>${money(p.amount)} (comisión ${money(p.fee)})</span></div>
+            ${p.dispute_reason ? `<p class="q-msg"><b>Motivo:</b> ${esc(p.dispute_reason)}</p>` : ''}
+            ${['disputed', 'held'].includes(p.status) ? `<div class="q-actions"><button class="btn" data-a="refund" data-id="${p.order_id}">Reembolsar al cliente</button><button class="btn ghost" data-a="release" data-id="${p.order_id}">Liberar al profesional</button></div>` : ''}
+          </div>`).join('') : '<div class="empty"><p>Todavía no hay pagos.</p></div>'}</div>
+      </div>`;
+    $app.querySelectorAll('[data-a]').forEach((b) => (b.onclick = async () => {
+      const msg = b.dataset.a === 'refund' ? '¿Reembolsar el pago al cliente y cancelar el pedido?' : '¿Liberar el pago al profesional?';
+      if (!confirm(msg)) return;
+      try { await api(`/api/admin/orders/${b.dataset.id}/resolve`, { method: 'POST', body: { action: b.dataset.a } }); toast('Hecho'); viewAdmin(query); } catch (e) { toast(e.message, 'err'); }
+    }));
+    return;
+  }
+
+  const VLABEL = { pending: ['Pendiente', 'taken'], approved: ['Aprobada', 'open'], rejected: ['Rechazada', 'cancelled'] };
   $app.innerHTML = `
     <div class="wrap narrow">
-      <h1>Pagos y reclamaciones</h1>
-      <div class="olist">${rows.length ? rows.map((p) => `
+      <h1>Administración</h1>${tabs}
+      <div class="olist">${rows.length ? rows.map((v) => `
         <div class="ocard">
-          <div class="oc-top"><b>#${p.order_id} · ${esc(p.title)}</b><span class="pill ${p.status === 'disputed' ? 'cancelled' : p.status === 'held' ? 'taken' : 'open'}">${LABEL[p.status]}</span></div>
-          <div class="meta"><span>Cliente: ${esc(p.client_name)}</span><span>Profesional: ${esc(p.pro_name)}</span><span>${money(p.amount)} (comisión ${money(p.fee)})</span></div>
-          ${p.dispute_reason ? `<p class="q-msg"><b>Motivo:</b> ${esc(p.dispute_reason)}</p>` : ''}
-          ${['disputed', 'held'].includes(p.status) ? `<div class="q-actions"><button class="btn" data-a="refund" data-id="${p.order_id}">Reembolsar al cliente</button><button class="btn ghost" data-a="release" data-id="${p.order_id}">Liberar al profesional</button></div>` : ''}
-        </div>`).join('') : '<div class="empty"><p>Todavía no hay pagos.</p></div>'}</div>
+          <div class="oc-top"><b>${esc(v.name)}</b><span class="pill ${VLABEL[v.status][1]}">${VLABEL[v.status][0]}</span></div>
+          <div class="meta"><span>${esc(v.email)}</span><span>${esc(v.trade || '')}</span>${v.license ? `<span>Declara: ${esc(v.license)}</span>` : ''}<span>Enviado ${fmtDate(v.created_at)}</span></div>
+          <div class="q-actions">${v.docs.map((d) => (d.available
+            ? `<button class="btn ghost small" data-doc="${v.id}/${d.i}" data-mime="${esc(d.mime)}">${icon('eye')} ${esc(d.label)}</button>`
+            : `<span class="tag">${esc(d.label)} (borrado)</span>`)).join('')}</div>
+          ${v.review_note ? `<p class="q-msg"><b>Nota:</b> ${esc(v.review_note)}</p>` : ''}
+          ${v.status === 'pending' ? `<div class="q-actions"><button class="btn" data-r="approve" data-id="${v.id}">Aprobar</button><button class="btn ghost" data-r="reject" data-id="${v.id}">Rechazar</button></div>` : ''}
+        </div>`).join('') : '<div class="empty"><p>No hay verificaciones.</p></div>'}</div>
+      <p class="muted small">Los documentos se borran al aprobar o rechazar. Compruébalos antes de decidir.</p>
     </div>`;
-  $app.querySelectorAll('[data-a]').forEach((b) => (b.onclick = async () => {
-    const msg = b.dataset.a === 'refund' ? '¿Reembolsar el pago al cliente y cancelar el pedido?' : '¿Liberar el pago al profesional?';
-    if (!confirm(msg)) return;
-    try { await api(`/api/admin/orders/${b.dataset.id}/resolve`, { method: 'POST', body: { action: b.dataset.a } }); toast('Hecho'); viewAdmin(); } catch (e) { toast(e.message, 'err'); }
+  $app.querySelectorAll('[data-doc]').forEach((b) => (b.onclick = async () => {
+    try {
+      const r = await fetch(`/api/admin/verifications/${b.dataset.doc.replace('/', '/doc/')}`, { headers: { Authorization: `Bearer ${state.token}` } });
+      if (!r.ok) throw new Error('No se pudo abrir el documento');
+      const url = URL.createObjectURL(await r.blob());
+      const lb = document.createElement('div');
+      lb.className = 'lightbox';
+      lb.innerHTML = b.dataset.mime === 'application/pdf' ? `<iframe src="${url}" title="Documento" class="doc-frame"></iframe>` : `<img src="${url}" alt="Documento">`;
+      lb.onclick = () => { URL.revokeObjectURL(url); lb.remove(); };
+      document.body.appendChild(lb);
+    } catch (e) { toast(e.message, 'err'); }
+  }));
+  $app.querySelectorAll('[data-r]').forEach((b) => (b.onclick = async () => {
+    let note = '';
+    if (b.dataset.r === 'reject') { note = prompt('¿Qué falta o qué está mal? (se lo enviaremos al profesional)'); if (note == null) return; }
+    else if (!confirm('¿Aprobar la verificación? Se borrarán los documentos y el perfil mostrará «Verificado».')) return;
+    try { await api(`/api/admin/verifications/${b.dataset.id}/review`, { method: 'POST', body: { action: b.dataset.r, note } }); toast('Hecho'); viewAdmin(query); } catch (e) { toast(e.message, 'err'); }
   }));
 }
