@@ -735,6 +735,14 @@ function fileToDataURL(file, max) {
   });
 }
 
+function bindNotifs() {
+  const el = document.getElementById('notifsOn');
+  if (!el) return;
+  el.onchange = async () => {
+    try { await api('/api/me/notifs', { method: 'PUT', body: { email_notifs: el.checked } }); state.me.email_notifs = el.checked; toast(el.checked ? 'Avisos por email activados' : 'Avisos por email desactivados'); }
+    catch (e) { el.checked = !el.checked; toast(e.message, 'err'); }
+  };
+}
 async function viewPanel() {
   if (!state.me) return go('#/login?next=%23%2Fpanel');
   await loadMe(); renderNav();
@@ -747,9 +755,11 @@ async function viewPanel() {
           <a class="tile" href="#/buscar"><b>${icon('search')} Buscar profesionales</b><span>Encuentra quién llega hasta tu casa</span></a>
           <a class="tile" href="#/mensajes"><b>${icon('message-circle')} Mis mensajes</b><span>${state.unread ? `${state.unread} sin leer` : 'Tus conversaciones y propuestas'}</span></a>
         </div>
+        <label class="check"><input type="checkbox" id="notifsOn" ${state.me.email_notifs !== false ? 'checked' : ''}> Avisarme por email de presupuestos y mensajes de mis pedidos</label>
         <div class="pro-cta small"><div><h3>¿También ofreces un oficio?</h3><p>Activa tu perfil profesional con la misma cuenta.</p></div>
           <button class="btn light" id="become">Quiero ser profesional</button></div>
       </div>`;
+    bindNotifs();
     document.getElementById('become').onclick = async () => { await api('/api/me/become-pro', { method: 'POST' }); viewPanel(); };
     return;
   }
@@ -831,6 +841,7 @@ async function viewPanel() {
             <label>WhatsApp<input name="whatsapp" type="tel" value="${esc(p.whatsapp)}" placeholder="+34 600 000 000"></label>
             <label>Email de contacto<input name="contact_email" type="email" value="${esc(p.contact_email)}"></label>
           </div>
+          <label class="check"><input type="checkbox" id="notifsOn" ${state.me.email_notifs !== false ? 'checked' : ''}> Avisarme por email de presupuestos y mensajes de mis pedidos</label>
           ${state.pro ? `<label class="check"><input type="checkbox" id="alertsOn" ${p.email_alerts !== false ? 'checked' : ''}> Avisarme por email (${esc(state.me.email)}) cuando haya un pedido nuevo en mi zona</label>` : ''}
         </section>
 
@@ -875,6 +886,7 @@ async function viewPanel() {
     try { const l = await getLoc(); pos = { lat: l.lat, lng: l.lng }; setLabel(l.label); draw(true); } catch (err) { toast(err.message, 'err'); }
   });
 
+  bindNotifs();
   const ao = document.getElementById('alertsOn');
   if (ao) ao.onchange = async () => {
     try { await api('/api/pros/me/alerts', { method: 'PUT', body: { email_alerts: ao.checked } }); toast(ao.checked ? 'Avisos por email activados' : 'Avisos por email desactivados'); }

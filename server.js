@@ -160,7 +160,7 @@ function proOut(row, { full = false } = {}) {
 }
 
 function userOut(u) {
-  return u && { id: u.id, email: u.email, name: u.name, role: u.role, created_at: u.created_at };
+  return u && { id: u.id, email: u.email, name: u.name, role: u.role, created_at: u.created_at, email_notifs: u.email_notifs !== 0 };
 }
 
 function unreadCount(userId) {
@@ -179,6 +179,7 @@ const app = express();
 const pay = require('./payments')({ db, now, DEMO_MODE });
 const mailer = require('./mailer')({ db, now });
 // Migración: alertas por email de pedidos nuevos (activadas por defecto)
+if (!db.prepare('PRAGMA table_info(users)').all().some((c) => c.name === 'email_notifs')) db.exec('ALTER TABLE users ADD COLUMN email_notifs INTEGER NOT NULL DEFAULT 1');
 if (!db.prepare('PRAGMA table_info(pros)').all().some((c) => c.name === 'email_alerts')) db.exec('ALTER TABLE pros ADD COLUMN email_alerts INTEGER NOT NULL DEFAULT 1');
 app.post('/api/stripe/webhook', express.raw({ type: 'application/json' }), pay.webhook);
 app.use(express.json({ limit: '8mb' }));
@@ -478,6 +479,10 @@ app.post('/api/messages/:id/offer', auth, (req, res) => {
 orders = require('./orders')(app, { db, auth, TRADES, now, num, str, parse, haversineKm, PRO_SELECT, proOut, pay, mailer });
 pay.routes(app, auth);
 
+app.put('/api/me/notifs', auth, (req, res) => {
+  db.prepare('UPDATE users SET email_notifs = ? WHERE id = ?').run(req.body?.email_notifs === false ? 0 : 1, req.user.id);
+  res.json({ ok: true });
+});
 app.put('/api/pros/me/alerts', auth, (req, res) => {
   const r = db.prepare('UPDATE pros SET email_alerts = ? WHERE user_id = ?').run(req.body?.email_alerts === false ? 0 : 1, req.user.id);
   if (!r.changes) return res.status(404).json({ error: 'Primero crea tu perfil profesional' });

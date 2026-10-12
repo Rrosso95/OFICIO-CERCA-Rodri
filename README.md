@@ -105,7 +105,12 @@ Cuando un cliente publica un pedido, se avisa por email a los profesionales **ac
 
 Se envían por SMTP genérico: `SMTP_HOST`, `SMTP_PORT` (587), `SMTP_USER`, `SMTP_PASS`, `SMTP_SECURE=true` (para el puerto 465), `SMTP_FROM`. Sin `SMTP_HOST` no se envía nada: los emails se guardan en la tabla `email_log` y un administrador los ve en `GET /api/admin/emails`. Un fallo de email nunca rompe la operación que lo origina. Para producción usa un dominio propio con SPF/DKIM configurados para no caer en spam.
 
-**Aún no incluye:** avisos por email al cliente (presupuestos, mensajes) y de pagos, notificaciones push, verificación documental de profesionales, caducidad automática de pedidos y cancelación por parte del profesional.
+Además se envían estos avisos, que cada usuario puede desactivar con una casilla en su cuenta (`PUT /api/me/notifs`):
+- **Al cliente:** cuando llega un presupuesto nuevo (no al editarlo).
+- **Al profesional:** cuando el cliente acepta su presupuesto.
+- **A ambos:** cuando reciben un mensaje en el chat del pedido. Para no saturar, solo se envía un email por conversación hasta que el destinatario la lee.
+
+**Aún no incluye:** avisos por email de pagos (pago retenido, liberado, reclamación), notificaciones push, verificación documental de profesionales, caducidad automática de pedidos y cancelación por parte del profesional.
 
 ## Arquitectura
 
