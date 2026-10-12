@@ -2,7 +2,7 @@
 /* Pedidos: asistente con IA, presupuestos y chat del pedido. Usa las utilidades de app.js. */
 
 const URGENCY = { hoy: 'Hoy mismo', semana: 'Esta semana', flexible: 'Sin prisa' };
-const STATUS = { open: ['Abierto', 'open'], taken: ['En curso', 'taken'], done: ['Finalizado', 'done'], cancelled: ['Cancelado', 'cancelled'] };
+const STATUS = { open: ['Abierto', 'open'], taken: ['En curso', 'taken'], done: ['Finalizado', 'done'], cancelled: ['Cancelado', 'cancelled'], expired: ['Caducado', 'cancelled'] };
 const QUICK = ['Se ha atascado el fregadero', 'Ha saltado el diferencial', 'El aire no enfría', 'Gotea un grifo', 'Me he quedado fuera de casa', 'No hay agua caliente'];
 const GREETING = 'Hola, soy el asistente de Oficio Cerca. Cuéntame qué ocurre en casa y te ayudo a pedir presupuestos a profesionales de tu zona.';
 
@@ -253,7 +253,9 @@ async function viewPedidos(query) {
       <div class="oc-foot">${o.status === 'open'
         ? (o.quote_count ? `<b>${o.quote_count}</b> ${o.quote_count === 1 ? 'presupuesto' : 'presupuestos'} · desde <b>${money(o.lowest)}</b>${o.new_quotes ? ` <span class="badge">${o.new_quotes} nuevo${o.new_quotes > 1 ? 's' : ''}</span>` : ''}` : 'Esperando presupuestos…')
         : o.status === 'taken' ? `En curso con <b>${esc(o.accepted_pro || '')}</b>`
-        : o.status === 'done' ? `Finalizado con <b>${esc(o.accepted_pro || '')}</b>` : 'Cancelado'}</div>
+        : o.status === 'done' ? `Finalizado con <b>${esc(o.accepted_pro || '')}</b>`
+        : o.status === 'expired' ? 'Caducado sin elegir presupuesto · puedes volver a publicarlo'
+        : o.cancelled_by === 'pro' ? 'El profesional lo canceló · puedes volver a publicarlo' : 'Cancelado'}</div>
     </a>`;
   const proCard2 = (o) => `
     <a class="ocard" href="#/pedido/${o.id}">
@@ -356,13 +358,20 @@ async function viewPedido(id, query = {}) {
     if (o.status === 'open') {
       main = `<section class="osec">
         <h2>Presupuestos${quoted.length ? ` (${quoted.length})` : ''}</h2>
+        ${o.expires_at ? `<p class="muted small">El pedido seguirá abierto hasta el ${fmtDate(o.expires_at)}. Si no eliges presupuesto antes, caducará y podrás volver a publicarlo.</p>` : ''}
         ${quoted.length ? `<div class="qlist">${quoted.map(qcard).join('')}</div>` : `
           <div class="waiting">${icon('bell')}<div><b>Estamos avisando a los profesionales de tu zona</b>
           <p class="muted">${d.matching_pros ? `${d.matching_pros} ${d.matching_pros === 1 ? 'profesional cubre' : 'profesionales cubren'} tu dirección y ${d.matching_pros === 1 ? 'verá' : 'verán'} tu pedido. Esta página se actualiza sola cuando lleguen presupuestos.` : 'Todavía no hay profesionales de este oficio que lleguen a tu dirección. Mantendremos el pedido abierto.'}</p></div></div>`}
         ${asking.map((p) => `<article class="qcard"><div class="q-head">${avatar(p.pro)}<div class="q-who"><a class="name" href="#/pro/${p.pro.id}">${esc(p.pro.name)}</a><div class="muted small">Te ha escrito antes de presupuestar</div></div></div>
           <div class="q-actions"><button class="btn ghost" data-chat="${p.pro.id}" data-name="${esc(p.pro.name)}" data-sub="${esc(p.pro.trade)}">${icon('message-circle')} Chatear${p.unread ? ` <span class="badge">${p.unread}</span>` : ''}</button></div></article>`).join('')}
       </section>`;
-    } else if (chosen) {
+    } else if (o.can_reopen) {
+      const n = quoted.length;
+      main = `<section class="osec"><h2>${o.status === 'expired' ? 'Pedido caducado' : 'El profesional ha cancelado el trabajo'}</h2>
+        <p>${o.status === 'expired' ? `Pasaron ${state.config.order_expiry_days || 7} días sin que eligieras presupuesto.` : `Motivo: «${esc(o.cancel_reason)}».${d.payment?.status === 'refunded' ? ' Te hemos devuelto el pago íntegro.' : ''}`}</p>
+        <p class="muted">${n ? `Si lo vuelves a publicar, ${n === 1 ? 'el presupuesto que recibiste vuelve' : `los ${n} presupuestos que recibiste vuelven`} a estar disponibles. ` : ''}Avisaremos de nuevo a los profesionales de tu zona.</p>
+        <button class="btn" id="bReopen">Volver a publicar</button></section>`;
+    } else if (chosen && chosen.quote) {
       main = `<section class="osec"><h2>${o.status === 'cancelled' ? 'Pedido cancelado' : 'Profesional elegido'}</h2><div class="qlist">${qcard(chosen)}</div>
         ${o.status === 'done' ? `<p class="ok-text">${icon('check')} Trabajo finalizado. ¿Qué tal fue?</p><a class="btn" href="#/pro/${chosen.pro.id}">Valorar a ${esc(firstName(chosen.pro.name))}</a>` : ''}</section>`;
     } else {
@@ -394,10 +403,12 @@ async function viewPedido(id, query = {}) {
     }));
     const fin = document.getElementById('bFinish');
     if (fin) fin.onclick = async () => { if (!confirm(pm ? '¿Confirmas que el trabajo está hecho? Se liberará el pago al profesional.' : '¿Marcar el trabajo como finalizado?')) return; try { await api(`/api/orders/${o.id}/finish`, { method: 'POST' }); await refresh(true); } catch (e) { toast(e.message, 'err'); } };
+    const ro = document.getElementById('bReopen');
+    if (ro) ro.onclick = async () => { try { await api(`/api/orders/${o.id}/reopen`, { method: 'POST' }); toast('Pedido publicado de nuevo'); await refresh(true); } catch (e) { toast(e.message, 'err'); } };
     const can = document.getElementById('bCancel');
     if (can) can.onclick = async () => { if (!confirm(ps === 'held' ? '¿Cancelar el pedido? Te devolveremos el pago íntegro.' : '¿Cancelar este pedido? No se puede deshacer.')) return; try { await api(`/api/orders/${o.id}/cancel`, { method: 'POST' }); await refresh(true); } catch (e) { toast(e.message, 'err'); } };
 
-    if (!sel && chosen) openChat(chosen.pro.id, chosen.pro.name, chosen.pro.trade);
+    if (!sel && chosen && !o.can_reopen) openChat(chosen.pro.id, chosen.pro.name, chosen.pro.trade);
   }
 
   function renderPro() {
@@ -425,8 +436,11 @@ async function viewPedido(id, query = {}) {
       ${d.won ? `<p>${icon('map-pin')} ${esc(o.address_label)}${o.address_detail ? ` · ${esc(o.address_detail)}` : ''}</p><p class="muted small">Cliente: ${esc(d.client_name)}</p>`
         : `<p>${icon('map-pin')} ${esc(o.area)} · a ${dec(d.distance_km)} km de tu base</p><p class="muted small">La dirección exacta se muestra cuando el cliente te elige.</p>`}</section>`;
     const pm = d.pay_mode !== 'off', pp = d.payment;
-    const actions = `<div class="oactions">${o.status === 'taken' && d.won && (!pm || (pp?.status === 'held' && !pp.pro_done_at)) ? `<button class="btn" id="bFinish">${pm ? 'Marcar trabajo como terminado' : 'Marcar como finalizado'}</button>` : ''}</div>`;
-    const warn = o.status === 'cancelled' ? '<div class="notice">El cliente ha cancelado este pedido.</div>'
+    const canDrop = o.status === 'taken' && d.won && !(pp && (['disputed', 'released'].includes(pp.status) || pp.pro_done_at));
+    const actions = `<div class="oactions">${o.status === 'taken' && d.won && (!pm || (pp?.status === 'held' && !pp.pro_done_at)) ? `<button class="btn" id="bFinish">${pm ? 'Marcar trabajo como terminado' : 'Marcar como finalizado'}</button>` : ''}
+      ${canDrop ? '<button class="btn ghost" id="bDrop">No puedo hacer el trabajo</button>' : ''}</div>`;
+    const warn = o.status === 'expired' ? '<div class="notice">Este pedido ha caducado.</div>'
+      : o.status === 'cancelled' ? `<div class="notice">${o.cancelled_by === 'pro' && d.won ? 'Cancelaste este trabajo.' : 'El cliente ha cancelado este pedido.'}</div>`
       : o.status !== 'open' && !d.won ? '<div class="notice">Este pedido ya está asignado a otro profesional.</div>' : '';
     $app.querySelector('#odetail').innerHTML = warn + head(o, 'pro') + (d.won && pm ? payBoxPro(d) : '') + place + mine + (form ? `<section class="osec">${form}</section>` : '') + actions;
     const amountIn = document.querySelector('#qf [name=amount]'), hint = document.getElementById('netHint');
@@ -436,6 +450,12 @@ async function viewPedido(id, query = {}) {
     }
     bindThumbs($app, o.photos);
 
+    const drop = document.getElementById('bDrop');
+    if (drop) drop.onclick = async () => {
+      const reason = prompt(`Explica al cliente por qué no puedes hacerlo.${pp?.status === 'held' ? ' Le devolveremos el pago íntegro.' : ''}`);
+      if (reason == null) return;
+      try { await api(`/api/orders/${o.id}/pro-cancel`, { method: 'POST', body: { reason } }); toast('Has cancelado el trabajo'); await refresh(true); } catch (err) { toast(err.message, 'err'); }
+    };
     const qf = document.getElementById('qf');
     if (qf) qf.onsubmit = async (e) => {
       e.preventDefault();
@@ -453,7 +473,7 @@ async function viewPedido(id, query = {}) {
   }
 
   const render = () => (d.role === 'client' ? renderClient() : renderPro());
-  const signature = () => JSON.stringify([d.order.status, d.order.accepted_pro_id, d.participants?.map((p) => [p.pro.id, p.quote?.id, p.quote?.amount, p.quote?.status, p.unread]), d.my_quote?.status, d.my_quote?.amount, d.payment?.status, d.payment?.pro_done_at]);
+  const signature = () => JSON.stringify([d.order.status, d.order.accepted_pro_id, d.participants?.map((p) => [p.pro.id, p.quote?.id, p.quote?.amount, p.quote?.status, p.unread]), d.my_quote?.status, d.my_quote?.amount, d.payment?.status, d.payment?.pro_done_at, d.order.can_reopen]);
   async function refresh(force) {
     const nd = await api(`/api/orders/${id}`);
     d = nd;

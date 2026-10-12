@@ -35,6 +35,11 @@ services:
         sync: false
       - key: SMTP_FROM
         sync: false
+      # Notificaciones push (npx web-push generate-vapid-keys)
+      - key: VAPID_PUBLIC_KEY
+        sync: false
+      - key: VAPID_PRIVATE_KEY
+        sync: false
     # Para conservar los datos entre reinicios: cambia plan a starter y descomenta
     # disk:
     #   name: oficios-data

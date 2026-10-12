@@ -28,6 +28,12 @@ services:
       SMTP_USER: "${SMTP_USER:-}"
       SMTP_PASS: "${SMTP_PASS:-}"
       SMTP_FROM: "${SMTP_FROM:-Oficio Cerca <no-reply@localhost>}"
+      # Notificaciones push: fija las claves en producción (npx web-push generate-vapid-keys). Sin ellas se generan y guardan en la base de datos.
+      VAPID_PUBLIC_KEY: "${VAPID_PUBLIC_KEY:-}"
+      VAPID_PRIVATE_KEY: "${VAPID_PRIVATE_KEY:-}"
+      VAPID_SUBJECT: "${VAPID_SUBJECT:-}"
+      # Días que un pedido sigue abierto sin elegir presupuesto antes de caducar (0 = nunca)
+      ORDER_EXPIRY_DAYS: "${ORDER_EXPIRY_DAYS:-7}"
     volumes:
       - oficios-data:/app/data
     restart: unless-stopped

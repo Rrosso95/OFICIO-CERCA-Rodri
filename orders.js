@@ -61,6 +61,12 @@ module.exports = function ordersModule(app, { db, auth, TRADES, now, num, str, p
   CREATE INDEX IF NOT EXISTS idx_omsg_order ON order_messages(order_id, pro_id);
   `);
 
+  // Migración: quién canceló y por qué
+  const ocols = db.prepare('PRAGMA table_info(orders)').all().map((c) => c.name);
+  if (!ocols.includes('cancelled_by')) db.exec("ALTER TABLE orders ADD COLUMN cancelled_by TEXT");
+  if (!ocols.includes('cancel_reason')) db.exec("ALTER TABLE orders ADD COLUMN cancel_reason TEXT DEFAULT ''");
+  const EXPIRY_DAYS = Number(process.env.ORDER_EXPIRY_DAYS ?? 7);
+
   const URGENCIES = ['hoy', 'semana', 'flexible'];
   const get = (sql, ...a) => db.prepare(sql).get(...a);
   const all = (sql, ...a) => db.prepare(sql).all(...a);
@@ -166,7 +172,7 @@ module.exports = function ordersModule(app, { db, auth, TRADES, now, num, str, p
       const pro = o.accepted_pro_id && get('SELECT name FROM users WHERE id = ?', o.accepted_pro_id);
       return {
         id: o.id, title: o.title, trade: o.trade, status: o.status, urgency: o.urgency, created_at: o.created_at,
-        area: areaOf(o.address_label), quote_count: q.n || 0, new_quotes: q.fresh || 0, lowest: q.lowest,
+        area: areaOf(o.address_label), quote_count: q.n || 0, new_quotes: q.fresh || 0, lowest: q.lowest, cancelled_by: o.cancelled_by,
         accepted_pro: pro ? pro.name : null,
       };
     }));
@@ -212,6 +218,9 @@ module.exports = function ordersModule(app, { db, auth, TRADES, now, num, str, p
     id: o.id, client_id: o.client_id, trade: o.trade, title: o.title, description: o.description, urgency: o.urgency,
     when_text: o.when_text, est_min: o.est_min, est_max: o.est_max, status: o.status, photos: parse(o.photos),
     created_at: o.created_at, updated_at: o.updated_at, finished_at: o.finished_at, accepted_pro_id: o.accepted_pro_id,
+    cancelled_by: o.cancelled_by, cancel_reason: o.cancel_reason || '',
+    expires_at: o.status === 'open' && EXPIRY_DAYS > 0 ? new Date(new Date(o.created_at).getTime() + EXPIRY_DAYS * 86400000).toISOString() : null,
+    can_reopen: o.status === 'expired' || (o.status === 'cancelled' && o.cancelled_by === 'pro'),
   });
   const proLite = (row, o) => {
     const p = proOut(row);
@@ -349,8 +358,11 @@ module.exports = function ordersModule(app, { db, auth, TRADES, now, num, str, p
       if (p.pro_done_at) return fail(res, 409, 'El profesional ya ha terminado: confirma el trabajo o abre una reclamación');
       try { await pay.refund(o.id, 'Pedido cancelado por el cliente'); } catch (e) { return fail(res, e.status || 500, e.status ? e.message : 'No se pudo reembolsar el pago'); }
     }
-    run("UPDATE orders SET status = 'cancelled', updated_at = ? WHERE id = ?", now(), o.id);
-    if (o.accepted_pro_id) system(o.id, o.accepted_pro_id, req.user.id, '❌ El cliente ha cancelado el pedido.');
+    run("UPDATE orders SET status = 'cancelled', cancelled_by = 'client', updated_at = ? WHERE id = ?", now(), o.id);
+    if (o.accepted_pro_id) {
+      system(o.id, o.accepted_pro_id, req.user.id, '❌ El cliente ha cancelado el pedido.');
+      notifyUser(o.accepted_pro_id, `Pedido cancelado: «${o.title}»`, ['El cliente ha cancelado el pedido. Si ya había pagado, se le ha devuelto el importe.'], baseOf(req), `/#/pedido/${o.id}`);
+    }
     res.json({ ok: true });
   });
 
@@ -377,6 +389,57 @@ module.exports = function ordersModule(app, { db, auth, TRADES, now, num, str, p
     res.json({ ok: true });
   });
 
+  // ---------- el profesional elegido no puede hacer el trabajo ----------
+  app.post('/api/orders/:id/pro-cancel', auth, async (req, res) => {
+    const o = get('SELECT * FROM orders WHERE id = ?', Number(req.params.id));
+    if (!o || o.accepted_pro_id !== req.user.id) return fail(res, 404, 'Pedido no encontrado');
+    if (o.status !== 'taken') return fail(res, 409, 'Solo puedes cancelar un trabajo en curso');
+    const reason = str(req.body?.reason, 500).trim();
+    if (reason.length < 5) return fail(res, 400, 'Explica brevemente al cliente por qué no puedes hacerlo');
+    const p = pay.getPayment(o.id);
+    if (p && p.status === 'disputed') return fail(res, 409, 'El pedido tiene una reclamación abierta');
+    if (p && p.status === 'held') {
+      if (p.pro_done_at) return fail(res, 409, 'Ya marcaste el trabajo como terminado');
+      try { await pay.refund(o.id, 'El profesional ha cancelado el trabajo'); } catch (e) { return fail(res, e.status || 500, e.status ? e.message : 'No se pudo reembolsar el pago'); }
+    }
+    run("UPDATE quotes SET status = 'withdrawn', updated_at = ? WHERE id = ?", now(), o.accepted_quote_id);
+    run("UPDATE orders SET status = 'cancelled', cancelled_by = 'pro', cancel_reason = ?, updated_at = ? WHERE id = ?", reason, now(), o.id);
+    system(o.id, req.user.id, req.user.id, `❌ El profesional ha cancelado el trabajo: «${reason}»`);
+    notifyUser(o.client_id, `El profesional ha cancelado «${o.title}»`, [
+      `${firstName(req.user.name)} no puede hacer el trabajo: «${reason}».`,
+      ...(p && p.status === 'held' ? ['Te hemos devuelto el pago íntegro.'] : []),
+      'Puedes volver a publicar el pedido con un clic: los demás presupuestos siguen disponibles.'], baseOf(req), `/#/pedido/${o.id}`);
+    res.json({ ok: true });
+  });
+
+  // ---------- volver a publicar (caducado o cancelado por el profesional) ----------
+  app.post('/api/orders/:id/reopen', auth, (req, res) => {
+    const o = ownOrder(req, res); if (!o) return;
+    if (!(o.status === 'expired' || (o.status === 'cancelled' && o.cancelled_by === 'pro'))) return fail(res, 409, 'Este pedido no se puede volver a publicar');
+    if (!pay.archive(o.id)) return fail(res, 409, 'El pedido tiene un pago en curso');
+    const t = now();
+    run("UPDATE quotes SET status = 'pending', client_seen = 0, updated_at = ? WHERE order_id = ? AND status = 'rejected'", t, o.id);
+    run(`UPDATE orders SET status = 'open', accepted_quote_id = NULL, accepted_pro_id = NULL, cancelled_by = NULL, cancel_reason = '',
+      created_at = ?, updated_at = ? WHERE id = ?`, t, t, o.id);
+    notifyNewOrder(o.id, baseOf(req)).catch((e) => console.error('avisos:', e.message));
+    res.json({ ok: true });
+  });
+
+  // ---------- caducidad: pedidos abiertos sin elegir presupuesto ----------
+  async function expireOld() {
+    if (!(EXPIRY_DAYS > 0)) return;
+    const limit = new Date(Date.now() - EXPIRY_DAYS * 86400000).toISOString();
+    for (const o of all("SELECT * FROM orders WHERE status = 'open' AND created_at < ?", limit)) {
+      run("UPDATE orders SET status = 'expired', updated_at = ? WHERE id = ? AND status = 'open'", now(), o.id);
+      const n = get("SELECT COUNT(*) AS n FROM quotes WHERE order_id = ? AND status = 'pending'", o.id).n;
+      notifyUser(o.client_id, `Tu pedido «${o.title}» ha caducado`, [
+        `Han pasado ${EXPIRY_DAYS} días sin que elijas presupuesto${n ? ` (tenías ${n})` : ''}, así que lo hemos cerrado.`,
+        'Si aún lo necesitas, vuelve a publicarlo con un clic y avisaremos de nuevo a los profesionales de tu zona.'], '', `/#/pedido/${o.id}`);
+    }
+  }
+  setInterval(() => expireOld().catch((e) => console.error('caducidad:', e.message)), Number(process.env.ORDER_EXPIRY_CHECK_MINUTES ?? 60) * 60000).unref();
+  expireOld().catch((e) => console.error('caducidad:', e.message));
+
   // ---------- chat del pedido (cliente ↔ profesional) ----------
   function thread(req, res) {
     const o = get('SELECT * FROM orders WHERE id = ?', Number(req.params.id));
@@ -390,7 +453,7 @@ module.exports = function ordersModule(app, { db, auth, TRADES, now, num, str, p
       const pro = get('SELECT * FROM pros WHERE user_id = ?', proId);
       if (!pro || !(involved(o.id, proId) || (o.status === 'open' && proMatches(pro, o)))) { fail(res, 404, 'Pedido no encontrado'); return null; }
     }
-    const closed = o.status === 'cancelled' || (o.status !== 'open' && o.accepted_pro_id !== proId);
+    const closed = ['cancelled', 'expired'].includes(o.status) || (o.status !== 'open' && o.accepted_pro_id !== proId);
     return { o, proId, closed };
   }
 
@@ -418,5 +481,5 @@ module.exports = function ordersModule(app, { db, auth, TRADES, now, num, str, p
     res.json({ ok: true });
   });
 
-  return { badges };
+  return { badges, expireOld };
 };

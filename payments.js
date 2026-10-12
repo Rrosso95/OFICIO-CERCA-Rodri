@@ -44,6 +44,7 @@ module.exports = function createPayments({ db, now, DEMO_MODE, notify = null }) 
     paid_at TEXT,
     released_at TEXT
   );
+  CREATE TABLE IF NOT EXISTS payments_archive AS SELECT * FROM payments WHERE 0;
   CREATE TABLE IF NOT EXISTS pro_payouts (
     user_id INTEGER PRIMARY KEY,
     stripe_account_id TEXT,
@@ -306,6 +307,16 @@ module.exports = function createPayments({ db, now, DEMO_MODE, notify = null }) 
     });
   }
 
-  return { get mode() { return mode; }, feePct: FEE_PCT, releaseHours: RELEASE_HOURS, isAdmin, getPayment, ensureFor, view, sync, markPaid,
+  // Al republicar un pedido, su pago anterior (pendiente o reembolsado) pasa al histórico para poder cobrar de nuevo
+  function archive(orderId) {
+    const p = getPayment(orderId);
+    if (!p) return true;
+    if (!['pending', 'refunded'].includes(p.status)) return false;
+    run('INSERT INTO payments_archive SELECT * FROM payments WHERE id = ?', p.id);
+    run('DELETE FROM payments WHERE id = ?', p.id);
+    return true;
+  }
+
+  return { archive, get mode() { return mode; }, feePct: FEE_PCT, releaseHours: RELEASE_HOURS, isAdmin, getPayment, ensureFor, view, sync, markPaid,
     release, refund, markProDone, dispute, payoutsReady, webhook, routes, autoRelease };
 };
