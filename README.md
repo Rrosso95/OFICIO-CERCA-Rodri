@@ -1,158 +1,254 @@
 # Oficio Cerca
 
-Web para que profesionales de oficios (plomero/fontanero, gasista, electricista, cerrajero…) publiquen su perfil con su **radio de desplazamiento**, y los clientes encuentren a quienes **realmente llegan hasta su ubicación**, vean reseñas y les contacten directamente.
+Plataforma para España que conecta a particulares con profesionales de oficios (fontanero, electricista, gasista, cerrajero…). El cliente cuenta su problema a un asistente con IA y recibe presupuestos de los profesionales que **realmente se desplazan hasta su dirección**. Elige uno, paga a través de la plataforma con el dinero retenido hasta que el trabajo está hecho, y valora al profesional. También puede buscar y contactar directamente por oficio y zona.
 
-## Arrancar con Docker
+> **Estado:** prototipo funcional completo en modo demostración. **No está listo para producción**: antes hay que resolver los puntos de [Qué falta para producción](#qué-falta-para-producción).
 
-```powershell
-Expand-Archive .\oficio-cerca.zip -DestinationPath .
-cd .\oficio-cerca
+## Índice
+
+- [Arrancar en local](#arrancar-en-local)
+- [Qué incluye](#qué-incluye)
+- [Configuración](#configuración)
+- [Arquitectura](#arquitectura)
+- [API](#api)
+- [Cómo se ha probado](#cómo-se-ha-probado)
+- [Qué falta para producción](#qué-falta-para-producción)
+
+## Arrancar en local
+
+Requisitos: Docker. Sin Docker: Node.js 22.13 o superior y `npm install && npm start`.
+
+```bash
 docker compose up --build -d
 ```
 
-Abre http://localhost:3080
+Abre http://localhost:3080. La primera vez se cargan unos 36 profesionales de ejemplo alrededor de Madrid, con reseñas y pedidos.
 
-La primera vez se cargan ~36 profesionales de ejemplo alrededor de Madrid, con reseñas.
+| Cuenta de prueba (contraseña `demo1234`) | Para ver |
+|---|---|
+| `cliente@demo.com` | Cliente con un pedido abierto con 3 presupuestos y otro en curso con el pago retenido |
+| `cliente1@demo.com` | Otro cliente con un pedido abierto |
+| `plomero@demo.com` | Profesional: pedidos nuevos en su zona, presupuestos, cobros y verificación |
+| `admin@demo.com` | Administración: pagos, reclamaciones y verificaciones (`#/admin`) |
 
-| Cuenta de prueba | Contraseña | Qué ver |
-|---|---|---|
-| `cliente@demo.com` | `demo1234` | Cliente con una conversación y una propuesta de precio pendiente |
-| `plomero@demo.com` | `demo1234` | Profesional: editar perfil, radio en el mapa, responder mensajes y reseñas |
-
-Comandos útiles:
-
-```powershell
-docker compose logs -f            # ver logs
-docker compose down               # parar
-docker compose down -v            # parar y BORRAR la base de datos (vuelve a sembrar datos demo)
+```bash
+docker compose logs -f     # ver logs
+docker compose down        # parar (los datos se conservan)
+docker compose down -v     # parar y BORRAR los datos (vuelve a sembrar la demo)
 ```
 
-Para sembrar los datos demo en otra ciudad, cambia `SEED_LAT` / `SEED_LNG` en `docker-compose.yml` y ejecuta `docker compose down -v; docker compose up --build -d`.
+En modo demostración (`DEMO_MODE=true`) todo funciona sin claves externas:
+- **IA:** el asistente usa un clasificador por palabras clave.
+- **Pagos:** son simulados, sin dinero real.
+- **Emails:** se guardan en un registro en vez de enviarse.
 
 ## Qué incluye
 
-**Clientes**
-- Búsqueda por oficio + ubicación (escribir dirección, botón "Mi ubicación" del navegador o clic en el mapa).
-- Solo aparecen profesionales cuyo círculo de desplazamiento cubre tu ubicación.
-- Filtros: valoración mínima, urgencias 24h, presupuesto gratis, con seguro, palabra clave. Orden: cercanía, valoración, nº reseñas, precio.
-- Mapa con los profesionales; al pasar por una tarjeta se dibuja su radio de acción.
-- Perfil completo: precio/hora, coste de desplazamiento, experiencia, horario, licencia/matrícula, seguro RC, factura, formas de pago, idiomas, fotos de trabajos, mapa del radio y aviso de si llega a tu casa.
-- Reseñas de 1 a 5 estrellas con desglose; el profesional puede responder públicamente.
-- Contacto: chat interno (estilo Idealista) con **propuestas de precio** que la otra parte acepta o rechaza, además de teléfono, WhatsApp y email.
+### Para clientes
+- **Asistente para pedir presupuestos** (`#/pedir`): el cliente describe el problema y el asistente hace de 1 a 3 preguntas. Después elige el oficio y propone título, descripción, urgencia y un precio orientativo de mano de obra.
+  - Ante riesgos como un olor a gas o chispas, indica qué hacer primero.
+  - El cliente revisa el pedido, añade su dirección y hasta 3 fotos, y lo publica. Si no tiene cuenta, se le pide al publicar sin perder lo escrito.
+- **Comparar presupuestos** (`#/pedido/:id`): importe, si incluye materiales, cuándo puede ir el profesional, valoraciones y distancia, con las etiquetas «Más barato» y «Mejor valorado». Hay un chat interno con cada profesional.
+- **Búsqueda directa** por oficio y ubicación, con un mapa del radio de cada profesional, filtros, perfiles, reseñas y contacto.
+- **Herramientas gratis sin registro:** «¿Cuánto cuesta?» (`#/presupuestador`) y «¿Está bien este presupuesto?» (`#/comparador`), que responde con un semáforo.
 
-**Profesionales**
-- Perfil editable con foto, galería (hasta 8 fotos), oficio principal y secundarios.
-- Ubicación base en mapa (arrastrable) y radio de 1 a 100 km con previsualización del círculo.
-- Bandeja de mensajes con contador de no leídos; pausar el perfil para no salir en búsquedas.
+### Para profesionales
+- **Perfil:** foto, galería, oficios, precio orientativo y zona base con su **radio de desplazamiento** en el mapa.
+- **Pedidos nuevos de su zona:** solo los de su oficio cuyo cliente queda dentro de su radio. Ven el barrio y la distancia; la **dirección exacta solo la ve el profesional elegido**.
+- **Presupuestos:** pueden enviarlos, editarlos o retirarlos, y escribir al cliente antes de presupuestar.
+- **Cobros** (`#/cobros`): se configuran una vez con Stripe Connect. Hasta entonces no pueden presupuestar.
+- **Verificación documental:** suben su DNI/NIE y su seguro de responsabilidad civil, más el carné en los oficios de gas, electricidad o climatización. Un administrador lo revisa y el perfil pasa a mostrar «Verificado».
+- **Cancelación:** si no pueden hacer un trabajo ya aceptado, lo cancelan explicando el motivo, y el cliente recupera su dinero.
 
-## Pedir presupuestos (MVP)
+### Ciclo de un pedido
 
-Además de buscar, el cliente puede **contar su problema a un asistente** y recibir presupuestos:
-
-1. **Asistente** (`#/pedir`): el cliente describe el problema; el asistente hace 1–3 preguntas, elige el oficio, propone título, descripción, urgencia y un precio orientativo de mano de obra. El cliente lo revisa, añade dirección y fotos (máx. 3) y publica. Si no tiene cuenta, se le pide al publicar y no pierde lo escrito.
-2. **Profesionales** (`#/pedidos`): ven los pedidos nuevos de su oficio dentro de su radio de acción (solo el barrio y la distancia; la dirección exacta se revela únicamente al profesional elegido) y envían un presupuesto (importe, si incluye materiales, cuándo pueden ir, mensaje).
-3. **Cliente** (`#/pedido/:id`): compara presupuestos (etiquetas «Más barato» / «Mejor valorado»), chatea con cada profesional, acepta uno (los demás se descartan) y marca el trabajo como finalizado para poder valorarlo.
-
-Estados del pedido: `open` → `taken` → `done` (o `cancelled`). Hay un chat interno por pedido y profesional, y contadores de novedades en la barra de navegación.
-
-**IA.** Con `ANTHROPIC_API_KEY` el asistente usa Claude (`AI_MODEL`, por defecto `claude-opus-5-5`) con salida estructurada. Sin clave, o si la API falla, cae a un clasificador por palabras clave: el flujo sigue funcionando, solo sin preguntas de aclaración ni precio orientativo. `/api/ai/status` indica el modo activo. La IA no decide precios: los presupuestos los ponen los profesionales.
-
-```powershell
-$env:ANTHROPIC_API_KEY = "sk-ant-..."
-docker compose up --build -d
+```
+abierto ──(el cliente acepta un presupuesto)──▶ en curso ──(trabajo confirmado)──▶ finalizado
+   │                                              │
+   ├─(7 días sin elegir)──▶ caducado ─┐           ├─(cancela el cliente)──▶ cancelado (reembolso)
+   └─(cancela el cliente)──▶ cancelado │           └─(cancela el profesional)──▶ cancelado (reembolso) ─┐
+                                       └────────── «Volver a publicar» ◀─────────────────────────────────┘
 ```
 
-Datos de ejemplo: `cliente@demo.com` tiene un pedido abierto con 3 presupuestos y otro en curso con chat; `plomero@demo.com` tiene un pedido nuevo en su zona y un presupuesto enviado.
+Al volver a publicar, los demás presupuestos vuelven a estar disponibles y se avisa de nuevo a los profesionales de la zona.
 
-## Precios, SEO y herramientas gratis
+### Pagos con retención
+- El cliente **paga al aceptar** el presupuesto, exactamente su importe, y el dinero queda **retenido**.
+- Al **confirmar el cliente** que el trabajo está hecho, se transfiere al profesional el importe **menos la comisión (10 %, a cargo del profesional)**.
+- Si el profesional lo marca como terminado y el cliente no responde, el pago se libera solo a las **72 h**.
+- Mientras el pago está retenido, el cliente puede **reclamar**. El pago queda congelado hasta que un administrador lo reembolse o lo libere.
+- Si alguien cancela antes de terminar el trabajo, se **reembolsa** íntegro al cliente.
 
-Páginas **renderizadas en servidor** (indexables, con `title`, `description`, `canonical`, migas y datos estructurados `FAQPage`/`BreadcrumbList`), con el mismo diseño de la app:
+Funciona con tres modos de pago:
 
-| Ruta | Contenido |
-|---|---|
-| `/precios` | Índice de oficios con precios de referencia |
-| `/precios/:oficio` · `/precios/:oficio/:trabajo` | Rangos de mano de obra, qué cambia el precio, preguntas frecuentes |
-| `/servicios/:oficio` · `/servicios/:oficio/:ciudad` | Profesionales mejor valorados que llegan a esa ciudad, zonas, precios y FAQ (8 ciudades de España) |
-| `/sitemap.xml` · `/robots.txt` | Las páginas de ciudad sin profesionales llevan `noindex` y no entran en el sitemap |
-| `#/presupuestador` | «¿Cuánto cuesta?»: texto libre → rango habitual (`POST /api/tools/estimate`) |
-| `#/comparador` | «¿Está bien este presupuesto?»: semáforo buen precio / mejorable / caro / sospechosamente barato (`POST /api/tools/compare`) |
-
-**Importante:** los rangos de [prices.js](prices.js) son **estimaciones de partida** hechas para este proyecto, no datos medidos. Revísalos con profesionales reales antes de publicar. En cuanto haya al menos 8 presupuestos aceptados de un oficio, las páginas muestran además el rango **medido** en la plataforma. Para añadir trabajos u oficios edita `ITEMS` en `prices.js`; las ciudades están en `CITIES` de `seo.js`. Pon `PUBLIC_URL` en producción para que canonical y sitemap usen tu dominio.
-
-## Pagos con retención y reclamaciones
-
-Flujo: el cliente **paga al aceptar** un presupuesto → el dinero queda **retenido** en la plataforma → al **confirmar el cliente** que el trabajo está hecho se transfiere al profesional el importe **menos la comisión (10 %, a cargo del profesional; el cliente paga exactamente el presupuesto)**. Si es el profesional quien lo marca como terminado, el pago se libera solo a las 72 h salvo reclamación. Mientras el pago está retenido el cliente puede **reclamar**: queda congelado hasta que un administrador (`#/admin`) lo reembolse al cliente o lo libere al profesional. Si el cliente cancela antes de que el profesional termine, se **reembolsa** íntegro. Los profesionales configuran sus cobros una vez en `#/cobros` y no pueden presupuestar sin hacerlo.
-
-| Modo | Cuándo | Qué hace |
+| Modo | Cuándo se activa | Qué hace |
 |---|---|---|
-| `stripe` | hay `STRIPE_SECRET_KEY` | Stripe Connect (cuentas Express, cargos separados + transferencias con `source_transaction`), Checkout, reembolsos |
-| `simulated` | sin clave y `DEMO_MODE=true` | Mismo flujo con un proveedor falso: ves todo sin mover dinero |
-| `off` | sin clave y `DEMO_MODE=false` | Sin pagos (comportamiento anterior) |
+| `stripe` | hay `STRIPE_SECRET_KEY` | Stripe Connect con cuentas Express, cargos separados y transferencias (`source_transaction`), Checkout y reembolsos |
+| `simulated` | sin clave y con `DEMO_MODE=true` | El mismo flujo con un proveedor falso, sin dinero real |
+| `off` | sin clave y con `DEMO_MODE=false` | Sin pagos |
 
-Variables: `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `PUBLIC_URL` (para las URLs de retorno), `PLATFORM_FEE_PCT` (10), `RELEASE_HOURS` (72), `ADMIN_EMAILS` (lista separada por comas; en demo, `admin@demo.com` / `demo1234`), `PAYMENTS_MODE` para forzar un modo.
+### Avisos
+Cada usuario puede desactivar los emails desde su cuenta. Las notificaciones push se activan por dispositivo.
 
-**Probar con Stripe (modo test):**
-1. En el panel de Stripe activa **Connect** y copia la clave secreta de test (`sk_test_...`).
-2. Arranca con `STRIPE_SECRET_KEY` y `PUBLIC_URL`. Con el CLI de Stripe: `stripe listen --forward-to localhost:3080/api/stripe/webhook` y pon el `whsec_...` que imprime en `STRIPE_WEBHOOK_SECRET`.
-3. Sin webhook también funciona en local: al abrir el pedido se consulta a Stripe el estado del pago.
-4. Tarjeta de prueba `4242 4242 4242 4242`; para el alta del profesional usa los datos de prueba de Stripe Connect.
+| A quién | Cuándo |
+|---|---|
+| Profesionales de la zona | Hay un pedido nuevo de su oficio dentro de su radio (con su propia casilla de desactivación) |
+| Cliente | Llega un presupuesto nuevo, se recibe su pago, el profesional termina, el pedido caduca, el profesional cancela, se le reembolsa |
+| Profesional | Le eligen, el cliente paga, le transfieren, hay una reclamación, el cliente cancela, se resuelve su verificación |
+| Ambos | Mensaje en el chat del pedido: solo un email por conversación hasta que se lee |
+| Administradores | Se abre una reclamación |
 
-**Pendiente antes de cobrar dinero real:** revisión legal de [las condiciones](public/app.js) (borrador en `#/legal/condiciones`), facturación de la comisión, comprobar con Stripe que tu cuenta de plataforma puede operar así (Connect, retención y transferencias en España/UE), y probar el flujo con Stripe real: yo solo lo he verificado contra un Stripe simulado en local, no contra la API real.
+Los emails nunca incluyen la dirección exacta ni el nombre completo del cliente.
 
-## Avisos por email
+### Precios y SEO
+- **Páginas renderizadas en el servidor**, indexables y con datos estructurados:
+  - `/precios`, `/precios/:oficio` y `/precios/:oficio/:trabajo`.
+  - `/servicios/:oficio` y `/servicios/:oficio/:ciudad`, para 8 ciudades.
+  - `sitemap.xml` y `robots.txt`.
+- **Páginas de ciudad sin profesionales:** llevan `noindex` y quedan fuera del sitemap.
+- **Precios:** son **rangos de referencia** escritos a mano en [prices.js](prices.js). Cuando un oficio acumula 8 o más presupuestos aceptados, se muestra también el rango medido en la plataforma.
 
-Cuando un cliente publica un pedido, se avisa por email a los profesionales **activos de ese oficio cuyo radio cubre la ubicación** (máx. 50 por pedido), con título, barrio, distancia, urgencia y enlace. El email **nunca incluye la dirección exacta ni el nombre del cliente**. El profesional puede desactivar estos avisos con una casilla en su perfil (`PUT /api/pros/me/alerts`).
+### Administración (`#/admin`)
+- **Pagos:** lista de pagos y reclamaciones, con reembolso o liberación.
+- **Verificaciones:** revisión de documentos, con aprobación o rechazo indicando el motivo.
 
-Se envían por SMTP genérico: `SMTP_HOST`, `SMTP_PORT` (587), `SMTP_USER`, `SMTP_PASS`, `SMTP_SECURE=true` (para el puerto 465), `SMTP_FROM`. Sin `SMTP_HOST` no se envía nada: los emails se guardan en la tabla `email_log` y un administrador los ve en `GET /api/admin/emails`. Un fallo de email nunca rompe la operación que lo origina. Para producción usa un dominio propio con SPF/DKIM configurados para no caer en spam.
+Los administradores se definen con `ADMIN_EMAILS`.
 
-Además se envían estos avisos, que cada usuario puede desactivar con una casilla en su cuenta (`PUT /api/me/notifs`):
-- **Al cliente:** cuando llega un presupuesto nuevo (no al editarlo).
-- **Al profesional:** cuando el cliente acepta su presupuesto.
-- **A ambos:** cuando reciben un mensaje en el chat del pedido. Para no saturar, solo se envía un email por conversación hasta que el destinatario la lee.
+## Configuración
 
-**Aún no incluye:** avisos por email de pagos (pago retenido, liberado, reclamación), notificaciones push, verificación documental de profesionales, caducidad automática de pedidos y cancelación por parte del profesional.
+Todas las variables de entorno se pasan en [docker-compose.yml](docker-compose.yml) (desde tu entorno o un `.env` junto a él) o en [render.yaml](render.yaml).
+
+| Variable | Por defecto | Para qué |
+|---|---|---|
+| `DEMO_MODE` | `true` | Datos de ejemplo, aviso de demo, pagos simulados y la cuenta `admin@demo.com`. **`false` en producción** |
+| `PUBLIC_URL` | — | URL pública (p. ej. `https://oficiocerca.es`), usada en canonical, sitemap, emails y retornos de Stripe. **Obligatoria en producción** |
+| `DB_PATH` | `data/oficios.db` | Base de datos SQLite; los documentos privados se guardan en `private/`, en la misma carpeta |
+| `SEED_LAT`, `SEED_LNG` | Madrid | Centro de los datos de ejemplo |
+| `ANTHROPIC_API_KEY` | — | Activa el asistente con Claude; sin ella, usa el clasificador básico |
+| `AI_MODEL` | `claude-opus-5-5` | Modelo del asistente |
+| `STRIPE_SECRET_KEY` | — | Activa los pagos reales con Stripe Connect (usa `sk_test_...` para probar) |
+| `STRIPE_WEBHOOK_SECRET` | — | Firma del webhook `/api/stripe/webhook`; sin ella, el estado del pago se consulta al abrir el pedido |
+| `PAYMENTS_MODE` | automático | Fuerza `stripe`, `simulated` u `off` |
+| `PLATFORM_FEE_PCT` | `10` | Comisión que paga el profesional (%) |
+| `RELEASE_HOURS` | `72` | Horas hasta la liberación automática si el profesional marca el trabajo como terminado |
+| `ADMIN_EMAILS` | `admin@demo.com` en demo | Emails de administración, separados por comas |
+| `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_SECURE`, `SMTP_FROM` | — | Envío de emails por cualquier proveedor SMTP. Sin `SMTP_HOST` solo se registran (`GET /api/admin/emails`) |
+| `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` | generadas | Claves de las notificaciones push. Fíjalas en producción con `npx web-push generate-vapid-keys` |
+| `ORDER_EXPIRY_DAYS` | `7` | Días hasta que caduca un pedido sin elegir presupuesto (`0` = nunca) |
+| `VERIF_KEEP_DOCS` | `false` | `true` conserva los documentos de verificación tras revisarlos |
+| `KEEP_ALIVE` | activado en Render | Autoping para que el plan gratuito de Render no se duerma |
+
+### Probar Stripe en modo test
+1. En el panel de Stripe, activa **Connect** y copia la clave secreta de test.
+2. Arranca con `STRIPE_SECRET_KEY` y `PUBLIC_URL`. Opcionalmente, ejecuta `stripe listen --forward-to localhost:3080/api/stripe/webhook` y pon el `whsec_...` que imprime en `STRIPE_WEBHOOK_SECRET`.
+3. El cliente paga con la tarjeta `4242 4242 4242 4242`. El profesional completa su alta con los datos de prueba de Stripe Connect.
 
 ## Arquitectura
 
-- **Backend**: Node.js 22 + Express, SQLite nativo de Node (`node:sqlite`), sin dependencias nativas que compilar.
-- **Frontend**: SPA en JavaScript sin framework + Leaflet (servido desde la propia app). Mapas de OpenStreetMap y geocodificación con Nominatim (requieren internet en el navegador).
-- **Datos**: `/app/data/oficios.db` dentro de un volumen Docker (`oficios-data`), persiste entre reinicios.
+- **Backend:** Node.js 22 con Express y SQLite nativo de Node (`node:sqlite`). No hay dependencias nativas que compilar.
+- **Frontend:** una SPA en JavaScript sin framework, con rutas `#/...`, más páginas de precios y servicios renderizadas en el servidor.
+- **Mapas:** Leaflet con OpenStreetMap, y geocodificación con Nominatim y Photon.
+- **Dependencias:** `express`, `leaflet`, `@anthropic-ai/sdk`, `stripe`, `nodemailer` y `web-push`.
 
 ```
-server.js        API REST (usuarios, perfiles, búsqueda, reseñas, mensajes)
-orders.js        pedidos, presupuestos y chat del pedido
-payments.js      pagos con retención (Stripe Connect o simulado), reclamaciones, administración
-mailer.js        envío de emails por SMTP (o registro local sin SMTP)
-ai.js            asistente (Claude + respaldo por palabras clave)
+server.js        arranque, usuarios, perfiles, búsqueda, reseñas, mensajes directos
+orders.js        pedidos, presupuestos, chat del pedido, caducidad, cancelaciones, avisos de pedidos
+ai.js            asistente (Claude con salida estructurada, o clasificador por palabras clave)
+payments.js      pagos con retención, reclamaciones y administración de pagos
+verification.js  verificación documental de profesionales
+notify.js        avisos por email y push (claves VAPID)
+mailer.js        envío SMTP o registro local
 prices.js        precios de referencia, emparejado de trabajos y veredicto del comparador
-seo.js           páginas de precios/servicios, sitemap y APIs de las herramientas
+seo.js           páginas /precios y /servicios, sitemap, robots y APIs de las herramientas
 seed.js          datos de ejemplo
-public/          index.html, app.js, pedidos.js, herramientas.js, styles.css
+public/          index.html, app.js, pedidos.js, herramientas.js, sw.js, styles.css, icons.js
 ```
 
-### API
+**Datos persistentes:** el volumen `/app/data` contiene la base de datos y `private/verificaciones` con los documentos pendientes de revisión. Las fotos de perfil, la galería y las fotos de los pedidos se guardan en la base de datos como data URLs.
 
-| Método | Ruta | Descripción |
-|---|---|---|
-| POST | `/api/auth/register`, `/api/auth/login`, `/api/auth/logout` | Sesión (token Bearer) |
-| GET | `/api/me` | Usuario, perfil pro y mensajes sin leer |
-| GET | `/api/search?lat&lng&trade&minRating&emergency&freeQuote&insured&q&sort` | Búsqueda por radio |
-| GET | `/api/pros/:id` | Perfil con reseñas |
-| PUT | `/api/pros/me` | Crear/editar mi perfil profesional |
-| POST | `/api/pros/:id/reviews` · `/api/reviews/:id/reply` | Reseñar · responder |
-| GET/POST | `/api/conversations` · `/api/conversations/:id/messages` | Chat |
-| POST | `/api/messages/:id/offer` | Aceptar/rechazar propuesta de precio |
-| POST | `/api/ai/chat` | Asistente: `{messages:[{role,content}]}` → `{status, reply, trade, title, summary, urgency, estimate_*}` (20 consultas/10 min por IP) |
-| POST/GET | `/api/orders` · `/api/orders/mine` · `/api/orders/:id` | Crear pedido · mis pedidos · detalle (vista cliente o profesional) |
-| GET | `/api/pro/orders` | Pedidos nuevos en mi zona y mis presupuestos |
-| POST | `/api/orders/:id/quotes` · `/quotes/withdraw` | Enviar/actualizar o retirar presupuesto |
-| POST | `/api/orders/:id/accept` · `/finish` · `/cancel` | Aceptar presupuesto · finalizar · cancelar |
-| GET/POST | `/api/orders/:id/chat?pro=` | Chat del pedido |
-| POST | `/api/orders/:id/pay` · `/pay/confirm-simulated` · `/dispute` | Pagar (Checkout) · confirmar pago simulado · abrir reclamación |
-| GET/POST | `/api/pay/status` · `/api/pay/connect` · `/api/pay/dashboard` | Cobros del profesional (Stripe Connect) |
-| POST | `/api/stripe/webhook` | Webhook de Stripe (firmado) |
-| GET/POST | `/api/admin/payments` · `/api/admin/orders/:id/resolve` | Administración: pagos y resolución de reclamaciones |
+## API
 
-## Siguientes pasos para producción
+Autenticación con `Authorization: Bearer <token>`, que devuelven `/api/auth/login` y `/api/auth/register`.
 
-Esto es un prototipo funcional. Antes de abrirlo al público: verificación de email y de profesionales (DNI/licencia), reseñas solo tras un trabajo acordado, moderación y denuncias, almacenamiento de imágenes en S3 en lugar de la base de datos, PostgreSQL + PostGIS para búsquedas geográficas a escala, HTTPS, límites de peticiones, y textos legales (RGPD, términos de uso).
+| Área | Rutas |
+|---|---|
+| Cuenta | `POST /api/auth/register` · `/login` · `/logout` · `GET /api/me` · `PUT /api/me/notifs` |
+| Profesionales | `GET /api/search` · `GET /api/pros/:id` · `PUT /api/pros/me` · `PUT /api/pros/me/alerts` · `POST /api/pros/:id/reviews` · `POST /api/reviews/:id/reply` |
+| Mensajes directos | `GET/POST /api/conversations` · `POST /api/conversations/:id/messages` · `POST /api/messages/:id/offer` |
+| Asistente | `POST /api/ai/chat` (20 consultas cada 10 min por IP) · `GET /api/ai/status` |
+| Pedidos | `POST /api/orders` · `GET /api/orders/mine` · `GET /api/orders/:id` · `GET /api/pro/orders` |
+| Presupuestos | `POST /api/orders/:id/quotes` · `/quotes/withdraw` · `/accept` |
+| Ciclo del pedido | `POST /api/orders/:id/finish` · `/cancel` · `/pro-cancel` · `/reopen` · `GET/POST /api/orders/:id/chat?pro=` |
+| Pagos | `POST /api/orders/:id/pay` · `/pay/confirm-simulated` · `/dispute` · `GET /api/pay/status` · `POST /api/pay/connect` · `/api/pay/dashboard` · `POST /api/stripe/webhook` |
+| Verificación | `GET /api/verification/me` · `POST /api/verification` |
+| Push | `GET /api/push/key` · `GET /api/push/status` · `POST /api/push/subscribe` · `/unsubscribe` |
+| Herramientas | `POST /api/tools/estimate` · `POST /api/tools/compare` (60 consultas cada 10 min por IP) |
+| Administración | `GET /api/admin/payments` · `POST /api/admin/orders/:id/resolve` · `GET /api/admin/verifications` · `GET .../:id/doc/:i` · `POST .../:id/review` · `GET /api/admin/emails` |
+
+## Cómo se ha probado
+
+- **Flujos de punta a punta:** se comprobaron contra un servidor local con datos limpios usando **scripts de prueba temporales**, que no están en el repositorio. Cubren pedidos y permisos, el ciclo de pagos (retención, liberación manual y automática, reclamación, reembolso, cancelación), los avisos, la verificación documental, la caducidad, la cancelación por el profesional y la republicación.
+- **Navegador:** la interfaz se revisó en escritorio y en móvil.
+- **Stripe:** se verificó contra un **Stripe simulado en local** (importes en céntimos, comisión, `source_transaction`, cuenta Express ES). **No se ha probado contra la API real de Stripe.**
+- **Asistente con Claude:** **no se ha probado con una clave real**. Solo se ha probado el clasificador de respaldo.
+- **Emails:** se enviaron a un servidor SMTP simulado. No se ha probado con un proveedor real ni la entregabilidad.
+- **Push:** el envío se probó con `web-push` simulado (incluida la limpieza de suscripciones caducadas). No se ha probado la recepción en un dispositivo real.
+- **Tests automatizados:** no hay. Es lo primero que conviene añadir (ver abajo).
+
+## Qué falta para producción
+
+Ordenado por prioridad. Las marcadas como **bloqueantes** deben resolverse antes de abrir al público o de mover dinero real.
+
+### 1. Legal y cumplimiento (bloqueante)
+- [ ] **Textos legales:** el aviso legal, la privacidad, las cookies y las condiciones de pago (`#/legal/...` en [public/app.js](public/app.js)) son **borradores con datos entre [corchetes]**. Complétalos y que los revise un abogado.
+- [ ] **Términos de uso generales:** no existen. Hay que redactarlos (derechos y obligaciones de clientes y profesionales, contenido, suspensión de cuentas) y que se acepten al registrarse.
+- [ ] **RGPD:**
+  - Registro de actividades de tratamiento.
+  - Contratos de encargado de tratamiento con Stripe, el proveedor SMTP, Anthropic (la IA recibe los textos del cliente) y el hosting.
+  - Mencionar en la política de privacidad el envío de datos a la IA.
+  - Plazos de conservación de los datos.
+- [ ] **Google Fonts** se carga desde los servidores de Google (envía la IP del visitante). Alójalas en el propio servidor o pide consentimiento.
+- [ ] **Derechos del consumidor:** información precontractual y derecho de desistimiento en los servicios que paga el cliente.
+- [ ] **Facturación:**
+  - La plataforma debe facturar su comisión al profesional (IVA incluido). Consulta con tu gestoría la normativa de facturación aplicable (Veri\*factu).
+  - Los profesionales facturan al cliente.
+  - Revisa también la obligación de informar a Hacienda de las operaciones de los vendedores en plataformas (DAC7).
+
+### 2. Pagos reales (bloqueante para cobrar)
+- [ ] Probar el flujo completo con **Stripe en modo test real** (ver [Probar Stripe](#probar-stripe-en-modo-test)), y después en modo live.
+- [ ] Confirmar con Stripe que tu cuenta de plataforma puede operar así en España: Connect, retener fondos entre el cobro y la transferencia, y cuentas Express de autónomos.
+- [ ] Configurar `STRIPE_WEBHOOK_SECRET` y `PUBLIC_URL` con HTTPS.
+- [ ] Definir el proceso de reclamaciones: quién las revisa, plazos de respuesta y qué pruebas se piden. Hoy un administrador decide manualmente.
+- [ ] Decidir qué pasa con los pedidos **aceptados que nunca se pagan**: hoy no caducan.
+
+### 3. Seguridad (bloqueante)
+- [ ] **Sesiones:** los tokens no caducan nunca y se guardan en `localStorage`, lo que los expone a XSS. Pásalos a cookies `httpOnly` y `Secure` con caducidad y rotación.
+- [ ] **Recuperación de contraseña:** no existe. Hay que añadirla, junto con la verificación del email al registrarse.
+- [ ] **Límites de peticiones** en login, registro, envío de mensajes y creación de pedidos: hoy solo los tienen la IA y las herramientas.
+- [ ] **Cabeceras de seguridad** (CSP, HSTS, `X-Frame-Options`), por ejemplo con `helmet`. HTTPS obligatorio.
+- [ ] **Documentos de verificación:** se guardan en disco sin cifrar (aunque se borran al revisarlos). En producción conviene un almacenamiento privado cifrado.
+- [ ] Revisión de seguridad del código antes del lanzamiento.
+
+### 4. Datos e infraestructura (bloqueante)
+- [ ] **Render en plan gratuito no tiene disco persistente:** se perderían todos los datos en cada reinicio. Usa un plan con disco o migra a **PostgreSQL** gestionado.
+- [ ] **Copias de seguridad** automáticas de la base de datos y de `private/`.
+- [ ] **Imágenes:** las fotos de perfil, la galería y los pedidos están en la base de datos como data URLs. Muévelas a almacenamiento de objetos (S3, R2) con CDN.
+- [ ] **Configuración de producción:** dominio propio con SPF/DKIM para los emails, `VAPID_*` fijas, `ADMIN_EMAILS` reales y `DEMO_MODE=false`.
+- [ ] **Monitorización:** errores (p. ej. Sentry), logs centralizados, alertas y uptime.
+
+### 5. Contenido y producto (bloqueante para lanzar)
+- [ ] **Validar los precios de referencia** de [prices.js](prices.js) con profesionales reales: son estimaciones sin validar.
+- [ ] **Probar el asistente con `ANTHROPIC_API_KEY`:** calidad de las preguntas, coste por pedido y comportamiento ante textos inesperados.
+- [ ] **Captar profesionales** en las ciudades de lanzamiento antes de abrir a clientes: sin ellos, los pedidos no reciben presupuestos.
+
+### 6. Importante, pero no bloqueante
+- [ ] **Tests automatizados** (API e interfaz) e integración continua.
+- [ ] **Reseñas:** hoy cualquier usuario registrado puede reseñar a cualquier profesional. Limítalas a clientes con un trabajo **finalizado** con ese profesional, y añade moderación y denuncias.
+- [ ] **Administración ampliada:** gestión de usuarios, bloqueo de cuentas, moderación de contenido y métricas de negocio.
+- [ ] **Penalizar las cancelaciones repetidas** de profesionales y los perfiles con valoraciones bajas.
+- [ ] **Evitar que el trato se cierre fuera de la plataforma:** detectar teléfonos y emails en el chat del pedido.
+- [ ] **Escalabilidad:** la búsqueda recorre todos los profesionales en memoria. Con muchos usuarios, usa PostgreSQL con PostGIS.
+- [ ] **Emails en HTML** con diseño propio (hoy son solo texto).
+- [ ] **Notificaciones push en iPhone:** requieren instalar la web en la pantalla de inicio (PWA). Conviene explicarlo en la interfaz.
+- [ ] **Accesibilidad:** revisión completa con lector de pantalla y teclado.
+- [ ] **SEO:** las páginas de la SPA (perfiles de profesionales) no son indexables. Valora renderizarlas en el servidor.
