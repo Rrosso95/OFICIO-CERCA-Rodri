@@ -14,6 +14,32 @@ services:
         value: "40.4168"
       - key: SEED_LNG
         value: "-3.7038"
+      # Opcional: activa el asistente con Claude (sin ella usa un clasificador básico)
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      # Pagos con Stripe Connect (claves de TEST para probar). Sin STRIPE_SECRET_KEY: simulado si DEMO_MODE=true, si no desactivado.
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false
+      - key: PUBLIC_URL
+        sync: false
+      - key: ADMIN_EMAILS
+        sync: false
+      # Avisos por email (SMTP genérico)
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASS
+        sync: false
+      - key: SMTP_FROM
+        sync: false
+      # Notificaciones push (npx web-push generate-vapid-keys)
+      - key: VAPID_PUBLIC_KEY
+        sync: false
+      - key: VAPID_PRIVATE_KEY
+        sync: false
     # Para conservar los datos entre reinicios: cambia plan a starter y descomenta
     # disk:
     #   name: oficios-data

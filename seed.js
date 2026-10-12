@@ -149,3 +149,67 @@ module.exports = function seed(db, { hashPassword }) {
 
   console.log('Datos de ejemplo cargados (contraseña de todas las cuentas: demo1234)');
 };
+
+// Pedidos de ejemplo (solo en DEMO_MODE y si no hay ninguno): se siembran aparte para que también
+// aparezcan en bases de datos demo creadas antes de existir los pedidos.
+module.exports.orders = function seedOrders(db, { payMode } = {}) {
+  if (db.prepare('SELECT COUNT(*) AS c FROM orders').get().c > 0) return;
+  const uid = (email) => db.prepare('SELECT id FROM users WHERE email = ?').get(email)?.id;
+  const laura = uid('cliente@demo.com'), javier = uid('cliente1@demo.com'), plomero = uid('plomero@demo.com');
+  const plomeroPro = plomero && db.prepare('SELECT * FROM pros WHERE user_id = ?').get(plomero);
+  if (!laura || !javier || !plomeroPro) return;
+
+  const iso = (d) => new Date(Date.now() - d * 86400000).toISOString();
+  const km = (aLat, aLng, bLat, bLng) => {
+    const r = (x) => (x * Math.PI) / 180, h = Math.sin(r(bLat - aLat) / 2) ** 2 + Math.cos(r(aLat)) * Math.cos(r(bLat)) * Math.sin(r(bLng - aLng) / 2) ** 2;
+    return 12742 * Math.asin(Math.sqrt(h));
+  };
+  const zone = (p) => String(p.base_label || 'Centro, Madrid').split(',')[0];
+  const insOrder = db.prepare(`INSERT INTO orders (client_id, trade, title, description, urgency, when_text, est_min, est_max,
+    address_label, address_detail, lat, lng, status, accepted_quote_id, accepted_pro_id, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
+  const insQuote = db.prepare(`INSERT INTO quotes (order_id, pro_id, amount, message, materials_included, visit_when, status, client_seen, created_at, updated_at)
+    VALUES (?,?,?,?,?,?,?,?,?,?)`);
+  const insMsg = db.prepare("INSERT INTO order_messages (order_id, pro_id, sender_id, kind, body, created_at) VALUES (?,?,?,?,?,?)");
+
+  // A) Pedido abierto de Laura, con varios presupuestos (el del fontanero demo incluido)
+  const aLat = plomeroPro.base_lat + 0.008, aLng = plomeroPro.base_lng + 0.006;
+  const a = Number(insOrder.run(laura, 'Plomero / Fontanero', 'Fuga bajo el fregadero de la cocina',
+    'Gotea agua debajo del fregadero cada vez que uso el grifo. Hay una mancha de humedad en el mueble. Edificio de 1970, sin obras recientes.',
+    'semana', 'Por las tardes a partir de las 17:00', 40, 90, `Calle Mayor 12, ${zone(plomeroPro)}, Madrid`, '2.º B', aLat, aLng,
+    'open', null, null, iso(1), iso(1)).lastInsertRowid);
+  insQuote.run(a, plomero, 65, 'Por lo que cuentas sería cambiar el sifón y las juntas. Material incluido y factura si la necesitas.', 1, 'Jueves por la tarde', 'pending', 0, iso(0.9), iso(0.9));
+  const others = db.prepare("SELECT * FROM pros WHERE active = 1 AND user_id != ? AND (trade = 'Plomero / Fontanero' OR trades_extra LIKE '%Plomero / Fontanero%')").all(plomero)
+    .filter((p) => km(aLat, aLng, p.base_lat, p.base_lng) <= p.radius_km).slice(0, 2);
+  [[48, 'Puedo ir mañana mismo. Si es solo el sifón, te lo dejo hecho en una hora.', 0, 'Mañana por la mañana'],
+   [82, 'Reviso toda la instalación bajo el fregadero y sustituyo flexibles y llaves de paso.', 1, 'Esta semana']].forEach(([amount, msg, mat, when], i) => {
+    if (others[i]) insQuote.run(a, others[i].user_id, amount, msg, mat, when, 'pending', 0, iso(0.8 - i * 0.1), iso(0.8 - i * 0.1));
+  });
+  insMsg.run(a, plomero, plomero, 'text', '¿El agua sale de la unión del sifón o de la pared?', iso(0.95));
+  insMsg.run(a, plomero, laura, 'text', 'Parece que del sifón, la pared está seca.', iso(0.93));
+
+  // B) Pedido abierto de Javier en la zona del fontanero demo: aparece en «Nuevos en tu zona»
+  insOrder.run(javier, 'Plomero / Fontanero', 'Cambiar el grifo del lavabo del baño',
+    'Quiero sustituir el grifo del lavabo por uno nuevo que ya tengo comprado (monomando). Solo hay que desmontar el viejo y montar el nuevo.',
+    'flexible', 'Fines de semana', 30, 55, `Calle de Bravo Murillo 40, ${zone(plomeroPro)}, Madrid`, '', plomeroPro.base_lat - 0.006, plomeroPro.base_lng + 0.004,
+    'open', null, null, iso(0.3), iso(0.3));
+
+  // C) Pedido en curso de Laura con un electricista (presupuesto ya aceptado)
+  const elec = db.prepare("SELECT * FROM pros WHERE trade = 'Electricista' AND active = 1 ORDER BY user_id LIMIT 1").get();
+  if (elec) {
+    const cLat = elec.base_lat + 0.004, cLng = elec.base_lng - 0.004;
+    const c = Number(insOrder.run(laura, 'Electricista', 'Salta el diferencial al enchufar el horno',
+      'Cada vez que enciendo el horno salta el diferencial. El resto de la casa funciona bien.', 'hoy', 'Cualquier hora', 50, 120,
+      `Calle de Atocha 8, ${zone(elec)}, Madrid`, '3.º A', cLat, cLng, 'taken', null, elec.user_id, iso(3), iso(2)).lastInsertRowid);
+    const q = Number(insQuote.run(c, elec.user_id, 90, 'Reviso el circuito del horno y la derivación a tierra. Si hay que cambiar el magnetotérmico, ya va incluido.', 1,
+      'Mañana a primera hora', 'accepted', 1, iso(2.9), iso(2)).lastInsertRowid);
+    db.prepare('UPDATE orders SET accepted_quote_id = ? WHERE id = ?').run(q, c);
+    insMsg.run(c, elec.user_id, laura, 'system', '✅ Presupuesto de 90 € aceptado. Ya podéis coordinar el día y la hora por aquí.', iso(2));
+    insMsg.run(c, elec.user_id, elec.user_id, 'text', 'Hola Laura, mañana a las 9:00 estoy por allí. ¿Te viene bien?', iso(1.9));
+    insMsg.run(c, elec.user_id, laura, 'text', 'Perfecto, aquí estaré. Gracias.', iso(1.8));
+    if (payMode === 'simulated') {
+      db.prepare(`INSERT INTO payments (order_id, client_id, pro_id, amount, fee, net, status, provider, created_at, updated_at, paid_at)
+        VALUES (?,?,?,?,?,?, 'held', 'simulated', ?, ?, ?)`).run(c, laura, elec.user_id, 90, 9, 81, iso(1.95), iso(1.95), iso(1.95));
+      insMsg.run(c, elec.user_id, laura, 'system', '💳 Pago de 90 € recibido y retenido. Se liberará al profesional cuando el cliente confirme que el trabajo está hecho.', iso(1.95));
+    }
+  }
+};

@@ -10,6 +10,30 @@ services:
       # Centro de los datos de ejemplo (por defecto Madrid)
       SEED_LAT: "40.4168"
       SEED_LNG: "-3.7038"
+      # Asistente de pedidos. Con clave de la API de Anthropic usa Claude; sin ella usa un clasificador básico por palabras clave.
+      # Ponla en tu entorno o en un archivo .env junto a este compose: ANTHROPIC_API_KEY=sk-ant-...
+      ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:-}"
+      AI_MODEL: "${AI_MODEL:-claude-opus-5-5}"
+      # Pagos con retención. Sin clave de Stripe y con DEMO_MODE=true funcionan en modo simulado (sin dinero real);
+      # sin clave y con DEMO_MODE=false quedan desactivados. Pon claves de TEST (sk_test_...) para probar Stripe.
+      STRIPE_SECRET_KEY: "${STRIPE_SECRET_KEY:-}"
+      STRIPE_WEBHOOK_SECRET: "${STRIPE_WEBHOOK_SECRET:-}"
+      PUBLIC_URL: "${PUBLIC_URL:-}"
+      PLATFORM_FEE_PCT: "${PLATFORM_FEE_PCT:-10}"
+      RELEASE_HOURS: "${RELEASE_HOURS:-72}"
+      ADMIN_EMAILS: "${ADMIN_EMAILS:-}"
+      # Avisos por email (SMTP genérico: Resend, Brevo, Mailgun...). Sin SMTP_HOST los emails no se envían, solo se registran.
+      SMTP_HOST: "${SMTP_HOST:-}"
+      SMTP_PORT: "${SMTP_PORT:-587}"
+      SMTP_USER: "${SMTP_USER:-}"
+      SMTP_PASS: "${SMTP_PASS:-}"
+      SMTP_FROM: "${SMTP_FROM:-Oficio Cerca <no-reply@localhost>}"
+      # Notificaciones push: fija las claves en producción (npx web-push generate-vapid-keys). Sin ellas se generan y guardan en la base de datos.
+      VAPID_PUBLIC_KEY: "${VAPID_PUBLIC_KEY:-}"
+      VAPID_PRIVATE_KEY: "${VAPID_PRIVATE_KEY:-}"
+      VAPID_SUBJECT: "${VAPID_SUBJECT:-}"
+      # Días que un pedido sigue abierto sin elegir presupuesto antes de caducar (0 = nunca)
+      ORDER_EXPIRY_DAYS: "${ORDER_EXPIRY_DAYS:-7}"
     volumes:
       - oficios-data:/app/data
     restart: unless-stopped

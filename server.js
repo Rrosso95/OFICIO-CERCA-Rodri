@@ -153,14 +153,14 @@ function proOut(row, { full = false } = {}) {
       description: row.description, phone: row.phone, whatsapp: row.whatsapp,
       contact_email: row.contact_email, license: row.license, hours: row.hours,
       payment_methods: parse(row.payment_methods), languages: parse(row.languages),
-      gallery: parse(row.gallery), updated_at: row.updated_at,
+      gallery: parse(row.gallery), updated_at: row.updated_at, email_alerts: row.email_alerts !== 0,
     });
   }
   return o;
 }
 
 function userOut(u) {
-  return u && { id: u.id, email: u.email, name: u.name, role: u.role, created_at: u.created_at };
+  return u && { id: u.id, email: u.email, name: u.name, role: u.role, created_at: u.created_at, email_notifs: u.email_notifs !== 0 };
 }
 
 function unreadCount(userId) {
@@ -173,7 +173,18 @@ function unreadCount(userId) {
 }
 
 // ---------- app ----------
+let orders = null; // se inicializa más abajo (orders.js)
 const app = express();
+// Pagos (Stripe Connect o simulado). El webhook necesita el cuerpo sin parsear, así que va antes de express.json.
+const mailer = require('./mailer')({ db, now });
+const notify = require('./notify')({ db, mailer, now });
+const pay = require('./payments')({ db, now, DEMO_MODE, notify });
+// Migración: alertas por email de pedidos nuevos (activadas por defecto)
+if (!db.prepare('PRAGMA table_info(users)').all().some((c) => c.name === 'email_notifs')) db.exec('ALTER TABLE users ADD COLUMN email_notifs INTEGER NOT NULL DEFAULT 1');
+if (!db.prepare('PRAGMA table_info(pros)').all().some((c) => c.name === 'email_alerts')) db.exec('ALTER TABLE pros ADD COLUMN email_alerts INTEGER NOT NULL DEFAULT 1');
+app.post('/api/stripe/webhook', express.raw({ type: 'application/json' }), pay.webhook);
+// Los documentos de verificación pueden pesar más que el resto de peticiones
+app.use('/api/verification', express.json({ limit: '20mb' }));
 app.use(express.json({ limit: '8mb' }));
 app.set('trust proxy', true);
 // index.html con la URL pública para Open Graph / canonical
@@ -207,7 +218,7 @@ function newSession(userId) {
 
 app.get('/api/health', (_req, res) => res.json({ ok: true }));
 app.get('/api/trades', (_req, res) => res.json(TRADES));
-app.get('/api/config', (_req, res) => res.json({ demo: DEMO_MODE }));
+app.get('/api/config', (_req, res) => res.json({ demo: DEMO_MODE, pay: { mode: pay.mode, fee_pct: pay.feePct, release_hours: pay.releaseHours }, order_expiry_days: Number(process.env.ORDER_EXPIRY_DAYS ?? 7) }));
 
 app.get('/api/stats', (_req, res) => {
   const pros = db.prepare('SELECT COUNT(*) AS c FROM pros WHERE active = 1').get().c;
@@ -272,7 +283,7 @@ app.post('/api/auth/logout', auth, (req, res) => {
 
 app.get('/api/me', auth, (req, res) => {
   const pro = db.prepare(`${PRO_SELECT} WHERE p.user_id = ?`).get(req.user.id);
-  res.json({ user: userOut(req.user), pro: proOut(pro, { full: true }), unread: unreadCount(req.user.id) });
+  res.json({ user: userOut(req.user), pro: proOut(pro, { full: true }), unread: unreadCount(req.user.id), pending: orders.badges(req.user.id), is_admin: pay.isAdmin(req.user), pay_mode: pay.mode });
 });
 
 app.post('/api/me/become-pro', auth, (req, res) => {
@@ -467,10 +478,39 @@ app.post('/api/messages/:id/offer', auth, (req, res) => {
   res.json({ ok: true });
 });
 
+// --- pedidos, presupuestos e IA ---
+orders = require('./orders')(app, { db, auth, TRADES, now, num, str, parse, haversineKm, PRO_SELECT, proOut, pay, mailer, notify });
+pay.routes(app, auth);
+notify.routes(app, auth);
+require('./verification')(app, { db, auth, now, parse, dataDir: path.dirname(DB_PATH), isAdmin: pay.isAdmin, notify });
+
+app.put('/api/me/notifs', auth, (req, res) => {
+  db.prepare('UPDATE users SET email_notifs = ? WHERE id = ?').run(req.body?.email_notifs === false ? 0 : 1, req.user.id);
+  res.json({ ok: true });
+});
+app.put('/api/pros/me/alerts', auth, (req, res) => {
+  const r = db.prepare('UPDATE pros SET email_alerts = ? WHERE user_id = ?').run(req.body?.email_alerts === false ? 0 : 1, req.user.id);
+  if (!r.changes) return res.status(404).json({ error: 'Primero crea tu perfil profesional' });
+  res.json({ ok: true });
+});
+app.get('/api/admin/emails', auth, (req, res) => {
+  if (!pay.isAdmin(req.user)) return res.status(403).json({ error: 'Solo para administración' });
+  res.json({ mode: mailer.mode, emails: db.prepare('SELECT * FROM email_log ORDER BY id DESC LIMIT 30').all() });
+});
+
+// --- precios, páginas por oficio/ciudad (SEO) y herramientas gratuitas ---
+require('./seo')(app, { db, PRO_SELECT, proOut, haversineKm, parse, TRADES });
+
 app.use('/api', (_req, res) => res.status(404).json({ error: 'No encontrado' }));
 
 // ---------- seed ----------
-if (DEMO_MODE) require('./seed')(db, { hashPassword, TRADES });
+if (DEMO_MODE) {
+  const seed = require('./seed');
+  seed(db, { hashPassword, TRADES });
+  seed.orders(db, { payMode: pay.mode });
+  if (pay.isAdmin({ email: 'admin@demo.com' }) && !db.prepare("SELECT 1 FROM users WHERE email = 'admin@demo.com'").get())
+    db.prepare("INSERT INTO users (email, pass_hash, name, role, created_at) VALUES ('admin@demo.com', ?, 'Administración', 'client', ?)").run(hashPassword('demo1234'), now());
+}
 
 // Keep-alive para Render gratis: se pide a sí mismo por la URL pública cada 10 min para no dormirse.
 // Render define RENDER_EXTERNAL_URL automáticamente. Desactivar con KEEP_ALIVE=false.
