@@ -5,6 +5,9 @@
 const P = require('./prices');
 
 const CITIES = [
+  { slug: 'oviedo', name: 'Oviedo', lat: 43.3619, lng: -5.8494, zones: ['Centro', 'La Florida', 'Vallobín', 'Teatinos', 'Ciudad Naranco', 'Buenavista', 'Pumarín', 'La Corredoria'] },
+  { slug: 'gijon', name: 'Gijón', lat: 43.5322, lng: -5.6611, zones: ['Centro', 'La Calzada', 'El Coto', 'Somió', 'Contrueces', 'El Llano', 'La Arena', 'Natahoyo'] },
+  { slug: 'aviles', name: 'Avilés', lat: 43.5547, lng: -5.9248, zones: ['Centro', 'La Luz', 'Sabugo', 'Llaranes', 'La Carriona', 'Miranda'] },
   { slug: 'madrid', name: 'Madrid', lat: 40.4168, lng: -3.7038, zones: ['Centro', 'Chamberí', 'Salamanca', 'Retiro', 'Arganzuela', 'Tetuán', 'Moncloa-Aravaca', 'Chamartín'] },
   { slug: 'barcelona', name: 'Barcelona', lat: 41.3874, lng: 2.1686, zones: ['Eixample', 'Gràcia', 'Sants-Montjuïc', 'Sarrià-Sant Gervasi', 'Horta-Guinardó', 'Sant Martí', 'Les Corts', 'Ciutat Vella'] },
   { slug: 'valencia', name: 'Valencia', lat: 39.4699, lng: -0.3763, zones: ['Ciutat Vella', "L'Eixample", 'Russafa', 'Benimaclet', 'El Cabanyal', 'Campanar', 'Patraix', 'Algirós'] },

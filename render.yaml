@@ -10,10 +10,7 @@ services:
         value: "true"
       - key: DB_PATH
         value: /app/data/oficios.db
-      - key: SEED_LAT
-        value: "40.4168"
-      - key: SEED_LNG
-        value: "-3.7038"
+      # Datos de ejemplo en Asturias por defecto; define SEED_LAT/SEED_LNG para centrarlos en otro punto
       # Opcional: activa el asistente con Claude (sin ella usa un clasificador básico)
       - key: ANTHROPIC_API_KEY
         sync: false

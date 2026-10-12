@@ -11,7 +11,7 @@ const state = {
 };
 let maps = [];
 let poller = null;
-const DEFAULT_CENTER = { lat: 40.4168, lng: -3.7038 };
+let DEFAULT_CENTER = { lat: 43.45, lng: -5.76, zoom: 9 }; // el servidor lo ajusta con /api/config
 
 // ---------- utilidades ----------
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -438,7 +438,7 @@ async function viewSearch(query) {
   ['trade', 'minRating', 'sort', 'emergency', 'freeQuote', 'insured'].forEach((n) => (form.elements[n].onchange = () => submit()));
 
   const $res = document.getElementById('results');
-  const map = newMap('smap', lat ? { lat, lng } : DEFAULT_CENTER, lat ? 12 : 6);
+  const map = newMap('smap', lat ? { lat, lng } : DEFAULT_CENTER, lat ? 12 : DEFAULT_CENTER.zoom);
   map.on('click', async (e) => {
     const l = { lat: e.latlng.lat, lng: e.latlng.lng, label: await reverseGeocode(e.latlng.lat, e.latlng.lng) };
     setLoc(l); submit(l);
@@ -904,7 +904,7 @@ async function viewPanel() {
 
   const f = document.getElementById('pf');
   const start = p.base_lat ? { lat: p.base_lat, lng: p.base_lng } : DEFAULT_CENTER;
-  const map = newMap('panelmap', start, p.base_lat ? 11 : 6);
+  const map = newMap('panelmap', start, p.base_lat ? 11 : DEFAULT_CENTER.zoom);
   let pos = p.base_lat ? { ...start } : null;
   let marker = null, circle = null;
   const draw = (fit) => {
@@ -1192,6 +1192,7 @@ async function route() {
   const boot = async () => {
     try {
       [state.trades, state.config] = await Promise.all([api('/api/trades', { timeout: 60000 }), api('/api/config', { timeout: 60000 }).catch(() => ({ demo: false }))]);
+      if (state.config.center) DEFAULT_CENTER = state.config.center;
       state.config.pay = state.config.pay || { mode: 'off', fee_pct: 10, release_hours: 72 };
     } catch (e) {
       $app.innerHTML = `<div class="wrap">${errorBox(e.message)}</div>`;

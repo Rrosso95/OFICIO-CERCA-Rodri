@@ -1,12 +1,23 @@
 'use strict';
 // Datos de ejemplo: solo se cargan con DEMO_MODE=true y si la base de datos está vacía.
 // Teléfonos con prefijo 000 (no asignable) para no apuntar a personas reales.
-// Centro configurable con SEED_LAT / SEED_LNG (por defecto, Madrid).
+// Por defecto los profesionales se reparten por Asturias (Oviedo, Gijón, Avilés y alrededores).
+// Con SEED_LAT / SEED_LNG se reparten alrededor de ese punto en su lugar (p. ej. para probar en otra ciudad).
 module.exports = function seed(db, { hashPassword }) {
   const count = db.prepare('SELECT COUNT(*) AS c FROM users').get().c;
   if (count > 0) return;
 
-  const CENTER = { lat: Number(process.env.SEED_LAT) || 40.4168, lng: Number(process.env.SEED_LNG) || -3.7038 };
+  const CUSTOM = process.env.SEED_LAT && process.env.SEED_LNG ? { lat: Number(process.env.SEED_LAT), lng: Number(process.env.SEED_LNG) } : null;
+  // Localidades con peso (más profesionales donde hay más población) y sus barrios
+  const TOWNS = [
+    { name: 'Oviedo', lat: 43.3619, lng: -5.8494, w: 4, zones: ['Centro', 'La Florida', 'Vallobín', 'Teatinos', 'Ciudad Naranco', 'Buenavista', 'Pumarín', 'La Corredoria'] },
+    { name: 'Gijón', lat: 43.5322, lng: -5.6611, w: 5, zones: ['Centro', 'La Calzada', 'El Coto', 'Somió', 'Contrueces', 'El Llano', 'La Arena', 'Natahoyo'] },
+    { name: 'Avilés', lat: 43.5547, lng: -5.9248, w: 2, zones: ['Centro', 'La Luz', 'Sabugo', 'Llaranes', 'La Carriona', 'Miranda'] },
+    { name: 'Siero', lat: 43.3911, lng: -5.6633, w: 1, zones: [] },
+    { name: 'Langreo', lat: 43.3033, lng: -5.687, w: 1, zones: [] },
+    { name: 'Mieres', lat: 43.2509, lng: -5.7716, w: 1, zones: [] },
+  ];
+  const TOWN_BAG = TOWNS.flatMap((t) => Array(t.w).fill(t));
   let s = 7;
   const rnd = () => ((s = (s * 16807) % 2147483647) / 2147483647);
   const pick = (a) => a[Math.floor(rnd() * a.length)];
@@ -69,8 +80,7 @@ module.exports = function seed(db, { hashPassword }) {
     'Alberto', 'Fernando', 'Iván', 'Rocío', 'Patricia', 'Silvia', 'Nuria', 'Hugo', 'Adrián', 'Gonzalo', 'Sara', 'Víctor'];
   const last = ['García', 'Martínez', 'López', 'Hernández', 'Pérez', 'Jiménez', 'Muñoz', 'Álvarez', 'Gil', 'Serrano',
     'Molina', 'Blanco', 'Vega', 'Rubio', 'Delgado', 'Prieto', 'Herrero', 'Cano', 'Ibáñez', 'Crespo'];
-  const zones = ['Centro', 'Chamberí', 'Salamanca', 'Retiro', 'Arganzuela', 'Tetuán', 'Carabanchel', 'Usera',
-    'Latina', 'Moncloa', 'Hortaleza', 'Vallecas', 'Getafe', 'Alcorcón', 'Leganés', 'Pozuelo', 'Alcobendas', 'Móstoles'];
+
   const intros = [
     (n, t, y, z) => `Soy ${n}, ${t} con ${y} años de oficio en ${z} y alrededores.`,
     (n, t, y, z) => `Llevo ${y} años trabajando como ${t} por la zona de ${z}.`,
@@ -103,14 +113,20 @@ module.exports = function seed(db, { hashPassword }) {
     const name = `${fn} ${pick(last)}`;
     const email = i === 0 ? 'plomero@demo.com' : `pro${i}@demo.com`;
     const uid = Number(insUser.run(email, pw, name, 'pro', daysAgo(100 + Math.floor(rnd() * 900))).lastInsertRowid);
-    const ang = rnd() * Math.PI * 2, r = Math.sqrt(rnd()) * 0.2;
-    const lat = CENTER.lat + r * Math.cos(ang);
-    const lng = CENTER.lng + r * Math.sin(ang) * 1.3;
+    let lat, lng, zone, cityName;
+    if (CUSTOM) {
+      const ang = rnd() * Math.PI * 2, r = Math.sqrt(rnd()) * 0.2;
+      lat = CUSTOM.lat + r * Math.cos(ang); lng = CUSTOM.lng + r * Math.sin(ang) * 1.3;
+      zone = cityName = 'Centro';
+    } else {
+      const town = pick(TOWN_BAG);
+      lat = town.lat + (rnd() - 0.8) * 0.04; lng = town.lng + (rnd() - 0.5) * 0.06; // sesgo al sur: Gijón y Avilés tienen costa al norte
+      cityName = town.name; zone = town.zones.length ? pick(town.zones) : town.name;
+    }
     const years = 3 + Math.floor(rnd() * 25);
     const price = Math.round(sp.price[0] + rnd() * (sp.price[1] - sp.price[0]));
     const emergency = ['Cerrajero', 'Plomero / Fontanero', 'Electricista', 'Gasista'].includes(trade) ? (rnd() > 0.3 ? 1 : 0) : (rnd() > 0.85 ? 1 : 0);
     const radius = [8, 10, 15, 20, 25, 30, 40][Math.floor(rnd() * 7)];
-    const zone = pick(zones);
     const jobs = [...sp.jobs].sort(() => rnd() - 0.5).slice(0, 3);
     const desc = `${pick(intros)(fn, trade.toLowerCase(), years, zone)}\n\nMe dedico sobre todo a ${jobs[0]}, ${jobs[1]} y ${jobs[2]}. ` +
       `${pick(outros)} ${pick(outros.filter(Boolean))}`;
@@ -123,7 +139,7 @@ module.exports = function seed(db, { hashPassword }) {
       emergency ? 'Lunes a domingo, 24 horas' : pick(['Lunes a viernes 8:00–19:00, sábados 9:00–14:00', 'Lunes a sábado 8:00–20:00', 'Lunes a viernes 9:00–18:00']),
       JSON.stringify(['Efectivo', ...payments.slice(1).filter(() => rnd() > 0.35)]),
       JSON.stringify(rnd() > 0.7 ? ['Español', 'Inglés'] : ['Español']),
-      lat, lng, `${zone}, Madrid`, radius, rnd() > 0.5 ? 1 : 0, daysAgo(Math.floor(rnd() * 30)));
+      lat, lng, zone === cityName ? cityName : `${zone}, ${cityName}`, radius, rnd() > 0.5 ? 1 : 0, daysAgo(Math.floor(rnd() * 30)));
 
     // 3–12 reseñas, mayoritariamente buenas (como suele pasar en la realidad)
     const nReviews = 3 + Math.floor(rnd() * 10);
@@ -164,7 +180,7 @@ module.exports.orders = function seedOrders(db, { payMode } = {}) {
     const r = (x) => (x * Math.PI) / 180, h = Math.sin(r(bLat - aLat) / 2) ** 2 + Math.cos(r(aLat)) * Math.cos(r(bLat)) * Math.sin(r(bLng - aLng) / 2) ** 2;
     return 12742 * Math.asin(Math.sqrt(h));
   };
-  const zone = (p) => String(p.base_label || 'Centro, Madrid').split(',')[0];
+  const where = (p) => p.base_label || 'Centro';
   const insOrder = db.prepare(`INSERT INTO orders (client_id, trade, title, description, urgency, when_text, est_min, est_max,
     address_label, address_detail, lat, lng, status, accepted_quote_id, accepted_pro_id, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
   const insQuote = db.prepare(`INSERT INTO quotes (order_id, pro_id, amount, message, materials_included, visit_when, status, client_seen, created_at, updated_at)
@@ -175,7 +191,7 @@ module.exports.orders = function seedOrders(db, { payMode } = {}) {
   const aLat = plomeroPro.base_lat + 0.008, aLng = plomeroPro.base_lng + 0.006;
   const a = Number(insOrder.run(laura, 'Plomero / Fontanero', 'Fuga bajo el fregadero de la cocina',
     'Gotea agua debajo del fregadero cada vez que uso el grifo. Hay una mancha de humedad en el mueble. Edificio de 1970, sin obras recientes.',
-    'semana', 'Por las tardes a partir de las 17:00', 40, 90, `Calle Mayor 12, ${zone(plomeroPro)}, Madrid`, '2.º B', aLat, aLng,
+    'semana', 'Por las tardes a partir de las 17:00', 40, 90, `Calle Mayor 12, ${where(plomeroPro)}`, '2.º B', aLat, aLng,
     'open', null, null, iso(1), iso(1)).lastInsertRowid);
   insQuote.run(a, plomero, 65, 'Por lo que cuentas sería cambiar el sifón y las juntas. Material incluido y factura si la necesitas.', 1, 'Jueves por la tarde', 'pending', 0, iso(0.9), iso(0.9));
   const others = db.prepare("SELECT * FROM pros WHERE active = 1 AND user_id != ? AND (trade = 'Plomero / Fontanero' OR trades_extra LIKE '%Plomero / Fontanero%')").all(plomero)
@@ -190,7 +206,7 @@ module.exports.orders = function seedOrders(db, { payMode } = {}) {
   // B) Pedido abierto de Javier en la zona del fontanero demo: aparece en «Nuevos en tu zona»
   insOrder.run(javier, 'Plomero / Fontanero', 'Cambiar el grifo del lavabo del baño',
     'Quiero sustituir el grifo del lavabo por uno nuevo que ya tengo comprado (monomando). Solo hay que desmontar el viejo y montar el nuevo.',
-    'flexible', 'Fines de semana', 30, 55, `Calle de Bravo Murillo 40, ${zone(plomeroPro)}, Madrid`, '', plomeroPro.base_lat - 0.006, plomeroPro.base_lng + 0.004,
+    'flexible', 'Fines de semana', 30, 55, `Calle Real 40, ${where(plomeroPro)}`, '', plomeroPro.base_lat - 0.006, plomeroPro.base_lng + 0.004,
     'open', null, null, iso(0.3), iso(0.3));
 
   // C) Pedido en curso de Laura con un electricista (presupuesto ya aceptado)
@@ -199,7 +215,7 @@ module.exports.orders = function seedOrders(db, { payMode } = {}) {
     const cLat = elec.base_lat + 0.004, cLng = elec.base_lng - 0.004;
     const c = Number(insOrder.run(laura, 'Electricista', 'Salta el diferencial al enchufar el horno',
       'Cada vez que enciendo el horno salta el diferencial. El resto de la casa funciona bien.', 'hoy', 'Cualquier hora', 50, 120,
-      `Calle de Atocha 8, ${zone(elec)}, Madrid`, '3.º A', cLat, cLng, 'taken', null, elec.user_id, iso(3), iso(2)).lastInsertRowid);
+      `Calle Nueva 8, ${where(elec)}`, '3.º A', cLat, cLng, 'taken', null, elec.user_id, iso(3), iso(2)).lastInsertRowid);
     const q = Number(insQuote.run(c, elec.user_id, 90, 'Reviso el circuito del horno y la derivación a tierra. Si hay que cambiar el magnetotérmico, ya va incluido.', 1,
       'Mañana a primera hora', 'accepted', 1, iso(2.9), iso(2)).lastInsertRowid);
     db.prepare('UPDATE orders SET accepted_quote_id = ? WHERE id = ?').run(q, c);

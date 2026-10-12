@@ -7,9 +7,10 @@ services:
     environment:
       # true = datos de ejemplo, cuentas demo y aviso de demo. Pon "false" en producción.
       DEMO_MODE: "true"
-      # Centro de los datos de ejemplo (por defecto Madrid)
-      SEED_LAT: "40.4168"
-      SEED_LNG: "-3.7038"
+      # Los datos de ejemplo se reparten por Asturias. Para centrarlos en otro punto, define SEED_LAT y SEED_LNG
+      # (también centran el mapa), p. ej. Madrid: 40.4168 y -3.7038
+      SEED_LAT: "${SEED_LAT:-}"
+      SEED_LNG: "${SEED_LNG:-}"
       # Asistente de pedidos. Con clave de la API de Anthropic usa Claude; sin ella usa un clasificador básico por palabras clave.
       # Ponla en tu entorno o en un archivo .env junto a este compose: ANTHROPIC_API_KEY=sk-ant-...
       ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:-}"
