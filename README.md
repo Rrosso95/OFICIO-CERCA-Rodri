@@ -106,6 +106,7 @@ Los emails nunca incluyen la dirección exacta ni el nombre completo del cliente
   - `/servicios/:oficio` y `/servicios/:oficio/:ciudad`, para 11 ciudades (Oviedo, Gijón y Avilés, más 8 de otras zonas de España). Las ciudades sin profesionales llevan `noindex`.
   - `sitemap.xml` y `robots.txt`.
 - **Páginas de ciudad sin profesionales:** llevan `noindex` y quedan fuera del sitemap.
+- **Portada:** una sección «¿Qué necesitas arreglar?» con una fila deslizable por oficio y una tarjeta con foto por trabajo (rango de mano de obra), con filtro por oficio (`GET /api/prices`, [public/precios-filas.js](public/precios-filas.js)). Las fotos se cargan desde Unsplash, lo que implica una petición a un tercero (ya recogido en la política de cookies).
 - **Precios:** son **rangos de referencia** escritos a mano en [prices.js](prices.js). Cuando un oficio acumula 8 o más presupuestos aceptados, se muestra también el rango medido en la plataforma.
 
 ### Administración (`#/admin`)

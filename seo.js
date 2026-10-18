@@ -292,6 +292,17 @@ ${jsonld}
   const out = (it) => ({ trade: it.trade, trade_slug: it.slugTrade, slug: it.slug, name: it.name, min: it.min, max: it.max, note: it.note });
   const guard = (req, res) => { if (limited(req.ip)) { res.status(429).json({ error: 'Demasiadas consultas seguidas. Espera unos minutos.' }); return false; } return true; };
 
+  // Precios de referencia agrupados por oficio (filas de precios de la portada)
+  app.get('/api/prices', (_req, res) => {
+    const trades = Object.keys(P.TRADE_META).filter((t) => P.itemsFor(t).length);
+    const stats = db.prepare(`SELECT COUNT(DISTINCT p.user_id) AS pros, ROUND(AVG(r.rating), 2) AS rating, COUNT(r.id) AS reviews
+      FROM pros p LEFT JOIN reviews r ON r.pro_id = p.user_id WHERE p.active = 1 AND p.trade = ?`);
+    res.json(trades.map((t) => ({
+      trade: t, slug: P.TRADE_META[t].slug, noun: P.TRADE_META[t].noun, ...stats.get(t),
+      items: P.itemsFor(t).map((it) => ({ slug: it.slug, name: it.name, min: it.min, max: it.max, note: it.note })),
+    })));
+  });
+
   app.post('/api/tools/estimate', (req, res) => {
     if (!guard(req, res)) return;
     const text = String(req.body?.text || '').slice(0, 300);

@@ -300,12 +300,12 @@ async function viewHome() {
         </div>
       </div>
     </section>
+    <section id="prices-home" class="pband"><div class="pband-in">
+      <h2 class="section-title">¿Qué necesitas arreglar?</h2>
+      <p class="prow-lead">Lo que suele costar cada trabajo: precios orientativos de mano de obra en España, sin materiales ni IVA. El precio final lo pone cada profesional.</p>
+      <div id="prow-list"></div>
+    </div></section>
     <section class="wrap">
-      <h2 class="section-title reveal">¿Qué necesitas arreglar?</h2>
-      <div class="cats reveal">
-        ${state.trades.map((t) => `<button class="cat" data-t="${esc(t)}" style="--h:${tradeHue(t)}"><span class="cat-ic">${tradeIcon(t)}</span>${esc(t)}</button>`).join('')}
-      </div>
-
       <div id="featured"></div>
 
       <h2 class="section-title reveal">Precios y herramientas gratis</h2>
@@ -362,7 +362,6 @@ async function viewHome() {
   document.getElementById('ask').onsubmit = (e) => { e.preventDefault(); askNow(document.getElementById('askq').value); };
   document.getElementById('askq').onkeydown = (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); askNow(e.target.value); } };
   document.querySelectorAll('#hquick button').forEach((b) => (b.onclick = () => askNow(b.textContent)));
-  document.querySelectorAll('.cat').forEach((b) => (b.onclick = () => doSearch(b.dataset.t)));
   reveal();
 
   // Datos de la home (si fallan, la página sigue siendo útil)
@@ -379,6 +378,12 @@ async function viewHome() {
       reveal();
     }
   }).catch(() => document.getElementById('proof')?.remove());
+  api('/api/prices').then((groups) => {
+    const el = document.getElementById('prow-list');
+    if (!el) return;
+    if (!groups.length) return document.getElementById('prices-home').remove();
+    renderPriceRows(el, groups); reveal();
+  }).catch(() => document.getElementById('prices-home')?.remove());
   const c = state.loc;
   api(`/api/featured?${c ? qs({ lat: c.lat, lng: c.lng }) : ''}`).then((list) => {
     const el = document.getElementById('featured');
@@ -1128,7 +1133,7 @@ const LEGAL = {
   cookies: ['Política de cookies', `
     <p>Oficio Cerca no usa cookies de publicidad ni de analítica.</p>
     <p>Solo guardamos en el almacenamiento local de tu navegador lo imprescindible para que la web funcione: tu sesión iniciada, la última ubicación que buscaste y que ya has visto este aviso. Al ser técnicos y necesarios, no requieren consentimiento según el art. 22.2 de la LSSI-CE.</p>
-    <p>Los mapas cargan imágenes de los servidores de OpenStreetMap y las tipografías se cargan desde Google Fonts.</p>`],
+    <p>Los mapas cargan imágenes de los servidores de OpenStreetMap, las tipografías se cargan desde Google Fonts y las fotos de la sección de precios de la portada, desde Unsplash.</p>`],
 };
 function viewLegal(slug) {
   const page = LEGAL[slug];
