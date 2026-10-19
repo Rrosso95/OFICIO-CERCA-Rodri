@@ -63,7 +63,7 @@ ${jsonld}
 <header class="topbar static">
   <a href="/" class="logo" aria-label="Oficio Cerca, inicio"><span class="logo-mark">◆</span><span>Oficio<b>Cerca</b></span></a>
   <nav id="nav" aria-label="Principal">
-    <a href="/precios">Precios</a><a href="/#/buscar" class="hide-xs">Buscar</a><a href="/#/profesionales" class="hide-xs">Soy profesional</a>
+    <a href="/#/buscar" class="hide-xs">Buscar</a><a href="/#/panel">Mi cuenta</a>
     <a href="/#/pedir" class="btn small">Pedir presupuestos</a>
   </nav>
 </header>

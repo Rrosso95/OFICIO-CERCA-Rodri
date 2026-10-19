@@ -167,26 +167,61 @@ function logoutLocal() {
   localStorage.removeItem('token');
   renderNav();
 }
+// Menú superior simple: «Pedir presupuestos» y «Buscar»; el resto, dentro del menú de la cuenta.
+let navMenuOpen = false;
+function setNavMenu(open, { focus = false } = {}) {
+  navMenuOpen = open;
+  const box = $nav.querySelector('.navmenu'), btn = document.getElementById('navMenuBtn');
+  if (!box) return;
+  box.classList.toggle('open', open);
+  btn.setAttribute('aria-expanded', String(open));
+  if (open && focus) box.querySelector('.navmenu-item')?.focus();
+}
 function renderNav() {
   const m = state.me;
+  const item = (href, ic, title, desc, badge = 0) => `
+    <a class="navmenu-item" href="${href}"><span class="ni-ic">${icon(ic)}</span><span class="ni-tx"><b>${title}</b><small>${desc}</small></span>${badge ? `<span class="badge">${badge}</span>` : ''}</a>`;
+  const isPro = m && m.role === 'pro';
+  const alerts = m ? state.pending.total + state.unread : 0;
   $nav.innerHTML = `
     <a href="#/pedir">${icon('sparkles')} Pedir presupuestos</a>
     <a href="#/buscar">${icon('search')} Buscar</a>
-    <a href="/precios">${icon('euro')} Precios</a>
     ${m ? `
-      <a href="#/pedidos">${icon('receipt')} Pedidos${state.pending.total ? `<span class="badge">${state.pending.total}</span>` : ''}</a>
-      ${state.pro && state.config.pay.mode !== 'off' ? `<a href="#/cobros">${icon('euro')} Cobros</a>` : ''}
-      ${state.isAdmin ? `<a href="#/admin">${icon('shield-check')} Admin</a>` : ''}
-      <a href="#/mensajes">${icon('message-circle')} Mensajes${state.unread ? `<span class="badge">${state.unread}</span>` : ''}</a>
-      <a href="#/panel">${icon('user-round')} ${m.role === 'pro' ? 'Mi perfil profesional' : 'Mi cuenta'}</a>
-      <a href="#" id="logout" class="muted">Salir</a>`
-    : `<a href="#/profesionales">Soy profesional</a><a href="#/login">Entrar</a>
-       <a href="#/registro" class="btn small">Regístrate gratis</a>`}`;
+    <div class="navmenu${navMenuOpen ? ' open' : ''}">
+      <button type="button" class="navmenu-trigger" id="navMenuBtn" aria-expanded="${navMenuOpen}" aria-controls="navMenuPanel">
+        ${icon('user-round')}<span>${isPro ? 'Mi perfil profesional' : 'Mi cuenta'}</span>${alerts ? `<span class="badge">${alerts}</span>` : ''}${icon('chevron-down', 'chev')}
+      </button>
+      <div class="navmenu-panel" id="navMenuPanel">
+        ${item('#/pedidos', 'receipt', 'Pedidos', 'Tus pedidos y presupuestos', state.pending.total)}
+        ${item('#/mensajes', 'message-circle', 'Mensajes', 'Conversaciones directas', state.unread)}
+        ${item('#/panel', 'user-round', isPro ? 'Mi perfil profesional' : 'Mis datos', isPro ? 'Tu perfil, zona, verificación y avisos' : 'Tu cuenta y tus avisos')}
+        ${state.pro && state.config.pay.mode !== 'off' ? item('#/cobros', 'euro', 'Cobros', 'Cómo recibes el dinero de tus trabajos') : ''}
+        ${item('/precios', 'euro', 'Precios', 'Cuánto cuesta cada arreglo')}
+        ${state.isAdmin ? item('#/admin', 'shield-check', 'Administración', 'Pagos, reclamaciones y verificaciones') : ''}
+        <div class="navmenu-sep"></div>
+        <a href="#" id="logout" class="navmenu-item"><span class="ni-ic">${icon('x')}</span><span class="ni-tx"><b>Salir</b></span></a>
+      </div>
+    </div>`
+    : `<a href="#/login">Entrar</a><a href="#/registro" class="btn small">Regístrate gratis</a>`}`;
   const lo = document.getElementById('logout');
   if (lo) lo.onclick = async (e) => { e.preventDefault(); try { await api('/api/auth/logout', { method: 'POST' }); } catch {} logoutLocal(); go('#/'); };
+  const btn = document.getElementById('navMenuBtn');
+  if (btn) {
+    btn.onclick = (e) => { e.stopPropagation(); setNavMenu(!navMenuOpen); };
+    btn.onkeydown = (e) => { if (e.key === 'ArrowDown') { e.preventDefault(); setNavMenu(true, { focus: true }); } };
+    document.getElementById('navMenuPanel').onkeydown = (e) => {
+      const items = [...e.currentTarget.querySelectorAll('.navmenu-item')], i = items.indexOf(document.activeElement);
+      if (e.key === 'ArrowDown') { e.preventDefault(); items[(i + 1) % items.length].focus(); }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); items[(i - 1 + items.length) % items.length].focus(); }
+      else if (e.key === 'Escape') { setNavMenu(false); btn.focus(); }
+    };
+  }
 }
+// El menú se cierra al pulsar fuera, con Escape y al navegar
+document.addEventListener('click', (e) => { if (navMenuOpen && !e.target.closest('.navmenu')) setNavMenu(false); });
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && navMenuOpen) { setNavMenu(false); document.getElementById('navMenuBtn')?.focus(); } });
 document.getElementById('menuBtn').onclick = () => document.body.classList.toggle('menu-open');
-$nav.addEventListener('click', (e) => { if (e.target.closest('a')) document.body.classList.remove('menu-open'); });
+$nav.addEventListener('click', (e) => { if (e.target.closest('a')) { document.body.classList.remove('menu-open'); navMenuOpen = false; } });
 
 // ---------- componentes ----------
 function locationPicker(id) {
@@ -1165,6 +1200,7 @@ function cookieNotice() {
 
 // ---------- router ----------
 async function route() {
+  navMenuOpen = false;
   clearView();
   window.scrollTo(0, 0);
   const { parts, query } = parseHash();
