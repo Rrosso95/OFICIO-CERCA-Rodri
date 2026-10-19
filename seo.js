@@ -72,7 +72,7 @@ ${jsonld}
   <div class="footer-inner">
     <div class="footer-brand"><a href="/" class="logo"><span class="logo-mark">◆</span><span>Oficio<b>Cerca</b></span></a>
       <p>Profesionales de oficios que llegan hasta tu casa. Gratis para clientes.</p></div>
-    <nav aria-label="Oficio Cerca"><h4>Oficio Cerca</h4><a href="/#/pedir">Pedir presupuestos</a><a href="/#/buscar">Buscar profesionales</a><a href="/precios">Precios</a><a href="/#/profesionales">Para profesionales</a></nav>
+    <nav aria-label="Oficio Cerca"><h4>Oficio Cerca</h4><a href="/#/pedir">Pedir presupuestos</a><a href="/#/manual">Manual de usuario</a><a href="/#/nosotros">Sobre nosotros</a><a href="/#/buscar">Buscar profesionales</a><a href="/precios">Precios</a><a href="/#/profesionales">Para profesionales</a></nav>
     <nav aria-label="Herramientas"><h4>Herramientas</h4><a href="/#/presupuestador">Cuánto cuesta un arreglo</a><a href="/#/comparador">Comparar un presupuesto</a><a href="/#/legal/privacidad">Privacidad</a><a href="/#/legal/aviso-legal">Aviso legal</a></nav>
   </div>
   <div class="footer-copy"><span>© ${new Date().getFullYear()} Oficio Cerca</span><span class="made-by">Diseñado y desarrollado por <strong class="pewmatic">Pewmatic</strong></span></div>

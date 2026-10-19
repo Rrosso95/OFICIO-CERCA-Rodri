@@ -23,6 +23,8 @@ services:
         sync: false
       - key: ADMIN_EMAILS
         sync: false
+      - key: CONTACT_EMAIL
+        sync: false
       # Avisos por email (SMTP genérico)
       - key: SMTP_HOST
         sync: false

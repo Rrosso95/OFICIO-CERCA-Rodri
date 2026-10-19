@@ -23,6 +23,8 @@ services:
       PLATFORM_FEE_PCT: "${PLATFORM_FEE_PCT:-10}"
       RELEASE_HOURS: "${RELEASE_HOURS:-72}"
       ADMIN_EMAILS: "${ADMIN_EMAILS:-}"
+      # Email público de contacto (se muestra en «Sobre nosotros» y «Contacto»)
+      CONTACT_EMAIL: "${CONTACT_EMAIL:-}"
       # Avisos por email (SMTP genérico: Resend, Brevo, Mailgun...). Sin SMTP_HOST los emails no se envían, solo se registran.
       SMTP_HOST: "${SMTP_HOST:-}"
       SMTP_PORT: "${SMTP_PORT:-587}"

@@ -52,6 +52,12 @@ En modo demostración (`DEMO_MODE=true`) todo funciona sin claves externas:
 - **Búsqueda directa** por oficio y ubicación, con un mapa del radio de cada profesional, filtros, perfiles, reseñas y contacto.
 - **Herramientas gratis sin registro:** «¿Cuánto cuesta?» (`#/presupuestador`) y «¿Está bien este presupuesto?» (`#/comparador`), que responde con un semáforo.
 
+### Portada, manual y «Sobre nosotros»
+- **Portada** (`#/`): el hero con el asistente, la búsqueda por oficio y zona, y la sección «¿Qué necesitas arreglar?» con los precios por oficio.
+- **Manual de usuario** (`#/manual`): cómo funciona, guía paso a paso para clientes y para profesionales, precios y herramientas, qué significa «Verificado», opiniones, profesionales destacados y preguntas frecuentes.
+- **Sobre nosotros** (`#/nosotros`): título animado y acordeón de preguntas (quiénes somos, dónde funciona, cómo funciona, datos…). Revisa y adapta el texto a vuestro caso: **no lo ha escrito nadie del equipo**.
+- **Menú:** arriba solo «Pedir presupuestos» y «Buscar». Dos desplegables: «Ayuda» (manual, sobre nosotros, precios, contacto) y la cuenta (pedidos, mensajes, perfil, cobros, administración y salir).
+
 ### Para profesionales
 - **Perfil:** foto, galería, oficios, precio orientativo y zona base con su **radio de desplazamiento** en el mapa.
 - **Pedidos nuevos de su zona:** solo los de su oficio cuyo cliente queda dentro de su radio. Ven el barrio y la distancia; la **dirección exacta solo la ve el profesional elegido**.
@@ -132,6 +138,7 @@ Todas las variables de entorno se pasan en [docker-compose.yml](docker-compose.y
 | `PAYMENTS_MODE` | automático | Fuerza `stripe`, `simulated` u `off` |
 | `PLATFORM_FEE_PCT` | `10` | Comisión que paga el profesional (%) |
 | `RELEASE_HOURS` | `72` | Horas hasta la liberación automática si el profesional marca el trabajo como terminado |
+| `CONTACT_EMAIL` | — | Email público que se muestra en «Sobre nosotros» y en «Contacto» (sin él, se enlaza a la página de contacto) |
 | `ADMIN_EMAILS` | `admin@demo.com` en demo | Emails de administración, separados por comas |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_SECURE`, `SMTP_FROM` | — | Envío de emails por cualquier proveedor SMTP. Sin `SMTP_HOST` solo se registran (`GET /api/admin/emails`) |
 | `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` | generadas | Claves de las notificaciones push. Fíjalas en producción con `npx web-push generate-vapid-keys` |
