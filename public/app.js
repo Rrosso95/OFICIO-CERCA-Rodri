@@ -167,26 +167,66 @@ function logoutLocal() {
   localStorage.removeItem('token');
   renderNav();
 }
+// Menú superior simple: «Pedir presupuestos», «Buscar» y dos desplegables: «Ayuda» y la cuenta.
+let navOpen = null; // id del desplegable abierto
+function setNavMenu(id, { focus = false } = {}) {
+  navOpen = id;
+  $nav.querySelectorAll('.navmenu').forEach((box) => {
+    const on = box.dataset.menu === id;
+    box.classList.toggle('open', on);
+    box.querySelector('.navmenu-trigger').setAttribute('aria-expanded', String(on));
+    if (on && focus) box.querySelector('.navmenu-item')?.focus();
+  });
+}
 function renderNav() {
-  const m = state.me;
+  const m = state.me, isPro = m && m.role === 'pro';
+  const item = (href, ic, title, desc, badge = 0) => `
+    <a class="navmenu-item" href="${href}"><span class="ni-ic">${icon(ic)}</span><span class="ni-tx"><b>${title}</b><small>${desc}</small></span>${badge ? `<span class="badge">${badge}</span>` : ''}</a>`;
+  const menu = (id, ic, label, badge, body) => `
+    <div class="navmenu${navOpen === id ? ' open' : ''}" data-menu="${id}">
+      <button type="button" class="navmenu-trigger" aria-expanded="${navOpen === id}" aria-controls="navMenu-${id}">
+        ${icon(ic)}<span>${label}</span>${badge ? `<span class="badge">${badge}</span>` : ''}${icon('chevron-down', 'chev')}
+      </button>
+      <div class="navmenu-panel" id="navMenu-${id}">${body}</div>
+    </div>`;
+  const help = menu('ayuda', 'info', 'Ayuda', 0, [
+    item('#/manual', 'book-open', 'Manual de usuario', 'Guía paso a paso y preguntas frecuentes'),
+    item('#/nosotros', 'users', 'Sobre nosotros', 'Quiénes somos y cómo trabajamos'),
+    item('/precios', 'euro', 'Precios', 'Cuánto cuesta cada arreglo'),
+    item('#/contacto', 'mail', 'Contacto', 'Escríbenos si tienes dudas'),
+  ].join(''));
+  const account = m ? menu('cuenta', 'user-round', isPro ? 'Mi perfil profesional' : 'Mi cuenta', state.pending.total + state.unread, `
+    ${item('#/pedidos', 'receipt', 'Pedidos', 'Tus pedidos y presupuestos', state.pending.total)}
+    ${item('#/mensajes', 'message-circle', 'Mensajes', 'Conversaciones directas', state.unread)}
+    ${item('#/panel', 'user-round', isPro ? 'Mi perfil profesional' : 'Mis datos', isPro ? 'Tu perfil, zona, verificación y avisos' : 'Tu cuenta y tus avisos')}
+    ${state.pro && state.config.pay.mode !== 'off' ? item('#/cobros', 'euro', 'Cobros', 'Cómo recibes el dinero de tus trabajos') : ''}
+    ${state.isAdmin ? item('#/admin', 'shield-check', 'Administración', 'Pagos, reclamaciones y verificaciones') : ''}
+    <div class="navmenu-sep"></div>
+    <a href="#" id="logout" class="navmenu-item"><span class="ni-ic">${icon('x')}</span><span class="ni-tx"><b>Salir</b></span></a>`) : '';
   $nav.innerHTML = `
     <a href="#/pedir">${icon('sparkles')} Pedir presupuestos</a>
     <a href="#/buscar">${icon('search')} Buscar</a>
-    <a href="/precios">${icon('euro')} Precios</a>
-    ${m ? `
-      <a href="#/pedidos">${icon('receipt')} Pedidos${state.pending.total ? `<span class="badge">${state.pending.total}</span>` : ''}</a>
-      ${state.pro && state.config.pay.mode !== 'off' ? `<a href="#/cobros">${icon('euro')} Cobros</a>` : ''}
-      ${state.isAdmin ? `<a href="#/admin">${icon('shield-check')} Admin</a>` : ''}
-      <a href="#/mensajes">${icon('message-circle')} Mensajes${state.unread ? `<span class="badge">${state.unread}</span>` : ''}</a>
-      <a href="#/panel">${icon('user-round')} ${m.role === 'pro' ? 'Mi perfil profesional' : 'Mi cuenta'}</a>
-      <a href="#" id="logout" class="muted">Salir</a>`
-    : `<a href="#/profesionales">Soy profesional</a><a href="#/login">Entrar</a>
-       <a href="#/registro" class="btn small">Regístrate gratis</a>`}`;
+    ${help}
+    ${m ? account : `<a href="#/login">Entrar</a><a href="#/registro" class="btn small">Regístrate gratis</a>`}`;
   const lo = document.getElementById('logout');
   if (lo) lo.onclick = async (e) => { e.preventDefault(); try { await api('/api/auth/logout', { method: 'POST' }); } catch {} logoutLocal(); go('#/'); };
+  $nav.querySelectorAll('.navmenu').forEach((box) => {
+    const id = box.dataset.menu, btn = box.querySelector('.navmenu-trigger');
+    btn.onclick = (e) => { e.stopPropagation(); setNavMenu(navOpen === id ? null : id); };
+    btn.onkeydown = (e) => { if (e.key === 'ArrowDown') { e.preventDefault(); setNavMenu(id, { focus: true }); } };
+    box.querySelector('.navmenu-panel').onkeydown = (e) => {
+      const items = [...e.currentTarget.querySelectorAll('.navmenu-item')], i = items.indexOf(document.activeElement);
+      if (e.key === 'ArrowDown') { e.preventDefault(); items[(i + 1) % items.length].focus(); }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); items[(i - 1 + items.length) % items.length].focus(); }
+      else if (e.key === 'Escape') { setNavMenu(null); btn.focus(); }
+    };
+  });
 }
+// Los desplegables se cierran al pulsar fuera, con Escape y al navegar
+document.addEventListener('click', (e) => { if (navOpen && !e.target.closest('.navmenu')) setNavMenu(null); });
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && navOpen) { const b = $nav.querySelector(`.navmenu[data-menu="${navOpen}"] .navmenu-trigger`); setNavMenu(null); b?.focus(); } });
 document.getElementById('menuBtn').onclick = () => document.body.classList.toggle('menu-open');
-$nav.addEventListener('click', (e) => { if (e.target.closest('a')) document.body.classList.remove('menu-open'); });
+$nav.addEventListener('click', (e) => { if (e.target.closest('a')) { document.body.classList.remove('menu-open'); navOpen = null; } });
 
 // ---------- componentes ----------
 function locationPicker(id) {
@@ -305,21 +345,79 @@ async function viewHome() {
       <p class="prow-lead">Lo que suele costar cada trabajo: precios orientativos de mano de obra en España, sin materiales ni IVA. El precio final lo pone cada profesional.</p>
       <div id="prow-list"></div>
     </div></section>
+`;
+  const getLoc = bindLocationPicker('hloc', () => {});
+  const doSearch = async (trade) => {
+    try { const l = await getLoc(); go(`#/buscar?${qs({ trade, lat: l.lat.toFixed(5), lng: l.lng.toFixed(5) })}`); }
+    catch (e) { toast(e.message, 'err'); }
+  };
+  document.getElementById('hs').onsubmit = (e) => { e.preventDefault(); doSearch(e.target.trade.value); };
+  const askNow = (text) => { const t = String(text || '').trim(); go(t ? `#/pedir?${qs({ q: t })}` : '#/pedir'); };
+  document.getElementById('ask').onsubmit = (e) => { e.preventDefault(); askNow(document.getElementById('askq').value); };
+  document.getElementById('askq').onkeydown = (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); askNow(e.target.value); } };
+  document.querySelectorAll('#hquick button').forEach((b) => (b.onclick = () => askNow(b.textContent)));
+  reveal();
+
+  // Datos de la home (si fallan, la página sigue siendo útil)
+  api('/api/stats').then((st) => {
+    if (!document.getElementById('st-pros')) return;
+    document.getElementById('st-pros').textContent = st.pros.toLocaleString('es-ES');
+    document.getElementById('st-avg').textContent = st.avg_rating ? `${dec(st.avg_rating)} ★` : '—';
+  }).catch(() => document.getElementById('proof')?.remove());
+  api('/api/prices').then((groups) => {
+    const el = document.getElementById('prow-list');
+    if (!el) return;
+    if (!groups.length) return document.getElementById('prices-home').remove();
+    renderPriceRows(el, groups); reveal();
+  }).catch(() => document.getElementById('prices-home')?.remove());
+}
+
+// ---------- manual de usuario ----------
+async function viewManual() {
+  $app.innerHTML = `
+    <section class="hero man-hero"><div class="hero-inner">
+      <h1>Manual de usuario</h1>
+      <p class="lead">Todo lo que necesitas para pedir presupuestos o conseguir clientes con Oficio Cerca, paso a paso.</p>
+      <nav class="toc" aria-label="Contenido del manual">
+        <button type="button" data-to="m-como">Cómo funciona</button><button type="button" data-to="m-clientes">Guía para clientes</button>
+        <button type="button" data-to="m-profesionales">Guía para profesionales</button><button type="button" data-to="m-herramientas">Precios y herramientas</button>
+        <button type="button" data-to="m-faq">Preguntas frecuentes</button>
+      </nav>
+    </div></section>
     <section class="wrap">
-      <div id="featured"></div>
-
-      <h2 class="section-title reveal">Precios y herramientas gratis</h2>
-      <div class="how reveal">
-        <div><h3>¿Cuánto cuesta?</h3><p>Cuéntanos qué necesitas y te damos el rango habitual de mano de obra.</p><a href="#/presupuestador">Calcular →</a></div>
-        <div><h3>¿Está bien este presupuesto?</h3><p>Compáralo con lo que suele costar ese trabajo antes de aceptarlo.</p><a href="#/comparador">Comparar →</a></div>
-        <div><h3>Precios por oficio</h3><p>Fontanero, electricista, cerrajero, pintor… con rangos y preguntas frecuentes.</p><a href="/precios">Ver precios →</a></div>
-      </div>
-
-      <h2 class="section-title reveal" id="como-funciona">Cómo funciona</h2>
+      <h2 class="section-title reveal" id="m-como">Cómo funciona</h2>
       <div class="how reveal">
         <div><b>1</b><h3>Cuéntanos qué pasa</h3><p>Nuestro asistente te hace un par de preguntas y prepara el pedido. También puedes buscar tú por oficio y zona.</p></div>
         <div><b>2</b><h3>Recibe presupuestos</h3><p>Los profesionales verificados que llegan a tu dirección te envían su precio. Compara valoraciones, materiales y disponibilidad.</p></div>
         <div><b>3</b><h3>Elige y habla</h3><p>Acepta el presupuesto que prefieras y coordina el día y la hora por el chat del pedido.</p></div>
+      </div>
+
+      <h2 class="section-title reveal" id="m-clientes">Guía para clientes</h2>
+      <ol class="steps reveal">
+        <li><b>Cuenta qué pasa.</b> Escribe tu problema en «Pedir presupuestos». El asistente te hace unas preguntas para dejar el pedido claro y puedes añadir hasta 3 fotos.</li>
+        <li><b>Revisa y publica.</b> Comprueba el resumen, indica dónde y cuándo lo necesitas y publica. Necesitas una cuenta gratuita; no pierdes lo que has escrito.</li>
+        <li><b>Recibe presupuestos.</b> Avisamos a los profesionales de tu oficio que llegan a tu dirección. Los verás en «Pedidos», dentro de tu menú. Si no eliges ninguno en ${state.config.order_expiry_days || 7} días, el pedido caduca y puedes volver a publicarlo.</li>
+        <li><b>Compara y habla.</b> Mira el importe, si incluye materiales, cuándo pueden ir y sus valoraciones. Puedes preguntarles por el chat del pedido antes de decidir.</li>
+        <li><b>Elige.</b> Al aceptar un presupuesto, los demás se descartan y el profesional elegido ve tu dirección exacta.${state.config.pay.mode === 'off' ? '' : ' Pagas por la plataforma y retenemos el dinero hasta que confirmes que el trabajo está hecho.'}</li>
+        <li><b>Termina y valora.</b> ${state.config.pay.mode === 'off' ? 'Cuando el trabajo esté hecho, márcalo como finalizado y deja tu reseña.' : 'Confirma el trabajo para liberar el pago y deja tu reseña. Si algo no está bien, abre una reclamación antes de confirmar y el pago queda congelado.'}</li>
+      </ol>
+
+      <h2 class="section-title reveal" id="m-profesionales">Guía para profesionales</h2>
+      <ol class="steps reveal">
+        <li><b>Crea tu perfil.</b> Regístrate como profesional y completa tu oficio, tu foto, tu descripción y tu zona base. Con el radio eliges hasta dónde te desplazas.</li>
+        <li><b>Verifica tu perfil.</b> En tu panel, sube tu documento de identidad, tu seguro y, si tu oficio lo exige (gas, electricidad, climatización), tu carné. Los revisamos y borramos los documentos.</li>
+        ${state.config.pay.mode === 'off' ? '' : '<li><b>Configura tus cobros.</b> Es obligatorio para presupuestar y solo se hace una vez, desde «Cobros».</li>'}
+        <li><b>Mira los pedidos de tu zona.</b> En «Pedidos» ves solo los de tu oficio dentro de tu radio, con el barrio y la distancia. La dirección exacta no se muestra hasta que te eligen.</li>
+        <li><b>Envía tu presupuesto.</b> Indica el importe, si incluye materiales y cuándo podrías ir. Puedes editarlo o retirarlo y escribir al cliente para aclarar dudas.</li>
+        <li><b>Si te eligen,</b> verás la dirección${state.config.pay.mode === 'off' ? '' : ', el cliente pagará y tú cobrarás (menos la comisión del ' + state.config.pay.fee_pct + ' %) cuando confirme el trabajo'}. Marca el trabajo como terminado al acabar. Si no puedes hacerlo, cancélalo explicando el motivo.</li>
+        <li><b>Activa los avisos.</b> Desde tu cuenta puedes recibir emails y notificaciones cuando haya pedidos nuevos en tu zona.</li>
+      </ol>
+
+      <h2 class="section-title reveal" id="m-herramientas">Precios y herramientas gratis</h2>
+      <div class="how reveal">
+        <div><h3>¿Cuánto cuesta?</h3><p>Cuéntanos qué necesitas y te damos el rango habitual de mano de obra.</p><a href="#/presupuestador">Calcular →</a></div>
+        <div><h3>¿Está bien este presupuesto?</h3><p>Compáralo con lo que suele costar ese trabajo antes de aceptarlo.</p><a href="#/comparador">Comparar →</a></div>
+        <div><h3>Precios por oficio</h3><p>Fontanero, electricista, cerrajero, pintor… con rangos y preguntas frecuentes.</p><a href="/precios">Ver precios →</a></div>
       </div>
 
       <div class="trust reveal">
@@ -333,7 +431,9 @@ async function viewHome() {
 
       <div id="reviews-home"></div>
 
-      <h2 class="section-title reveal">Preguntas frecuentes</h2>
+      <div id="featured"></div>
+
+      <h2 class="section-title reveal" id="m-faq">Preguntas frecuentes</h2>
       <div class="faq reveal">
         <details><summary>¿Es gratis?</summary><p>${state.config.pay.mode === 'off'
           ? 'Sí. Buscar, comparar y contactar con profesionales es gratis. Tampoco cobramos comisión a los profesionales por los trabajos que acuerdan.'
@@ -352,38 +452,17 @@ async function viewHome() {
         <a class="btn big light" href="#/profesionales">Consigue clientes en tu zona</a>
       </div>
     </section>`;
-  const getLoc = bindLocationPicker('hloc', () => {});
-  const doSearch = async (trade) => {
-    try { const l = await getLoc(); go(`#/buscar?${qs({ trade, lat: l.lat.toFixed(5), lng: l.lng.toFixed(5) })}`); }
-    catch (e) { toast(e.message, 'err'); }
-  };
-  document.getElementById('hs').onsubmit = (e) => { e.preventDefault(); doSearch(e.target.trade.value); };
-  const askNow = (text) => { const t = String(text || '').trim(); go(t ? `#/pedir?${qs({ q: t })}` : '#/pedir'); };
-  document.getElementById('ask').onsubmit = (e) => { e.preventDefault(); askNow(document.getElementById('askq').value); };
-  document.getElementById('askq').onkeydown = (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); askNow(e.target.value); } };
-  document.querySelectorAll('#hquick button').forEach((b) => (b.onclick = () => askNow(b.textContent)));
+  document.querySelectorAll('.toc button').forEach((b) => (b.onclick = () => document.getElementById(b.dataset.to)?.scrollIntoView({ behavior: 'smooth', block: 'start' })));
   reveal();
-
-  // Datos de la home (si fallan, la página sigue siendo útil)
   api('/api/stats').then((st) => {
-    if (!document.getElementById('st-pros')) return;
-    document.getElementById('st-pros').textContent = st.pros.toLocaleString('es-ES');
-    document.getElementById('st-avg').textContent = st.avg_rating ? `${dec(st.avg_rating)} ★` : '—';
-    if (st.recent_reviews.length) {
-      document.getElementById('reviews-home').innerHTML = `
-        <h2 class="section-title reveal">Opiniones recientes de clientes</h2>
-        <div class="quotes reveal">${st.recent_reviews.map((r) => `
-          <figure><blockquote>${esc(r.comment)}</blockquote>
-          <figcaption>${stars(r.rating)}<span><b>${esc(r.author)}</b> sobre <a href="#/pro/${r.pro_id}">${esc(r.pro_name)}</a>, ${esc(r.trade.toLowerCase())}</span></figcaption></figure>`).join('')}</div>`;
-      reveal();
-    }
-  }).catch(() => document.getElementById('proof')?.remove());
-  api('/api/prices').then((groups) => {
-    const el = document.getElementById('prow-list');
-    if (!el) return;
-    if (!groups.length) return document.getElementById('prices-home').remove();
-    renderPriceRows(el, groups); reveal();
-  }).catch(() => document.getElementById('prices-home')?.remove());
+    if (!st.recent_reviews.length || !document.getElementById('reviews-home')) return;
+    document.getElementById('reviews-home').innerHTML = `
+      <h2 class="section-title reveal">Opiniones recientes de clientes</h2>
+      <div class="quotes reveal">${st.recent_reviews.map((r) => `
+        <figure><blockquote>${esc(r.comment)}</blockquote>
+        <figcaption>${stars(r.rating)}<span><b>${esc(r.author)}</b> sobre <a href="#/pro/${r.pro_id}">${esc(r.pro_name)}</a>, ${esc(r.trade.toLowerCase())}</span></figcaption></figure>`).join('')}</div>`;
+    reveal();
+  }).catch(() => {});
   const c = state.loc;
   api(`/api/featured?${c ? qs({ lat: c.lat, lng: c.lng }) : ''}`).then((list) => {
     const el = document.getElementById('featured');
@@ -392,6 +471,44 @@ async function viewHome() {
       <div class="featured reveal">${list.map((p) => proCard(p)).join('')}</div>`;
     bindCards(el); reveal();
   }).catch(() => {});
+}
+
+// ---------- sobre nosotros ----------
+const contactLink = () => {
+  const e = state.config.contact_email;
+  return e ? `<a href="mailto:${esc(e)}">${esc(e)}</a>` : '<a href="#/contacto">nuestra página de contacto</a>';
+};
+function viewNosotros() {
+  const pay = state.config.pay;
+  const faqs = [
+    ['¿Qué es Oficio Cerca?', 'Es una plataforma que pone en contacto a personas que necesitan un arreglo en casa con profesionales de oficios: fontaneros, electricistas, gasistas, cerrajeros, pintores… Tú cuentas qué pasa y los profesionales de tu zona te envían presupuestos. No hacemos los trabajos nosotros: cada profesional es autónomo y responsable de su servicio.'],
+    ['¿Quiénes somos?', 'Un equipo pequeño que está empezando. Queremos que contratar a un profesional sea tan fácil como contar lo que te pasa, y que sepas qué esperar antes de decidir: cuánto suele costar, quién llega hasta tu casa y qué opinan otros clientes. Diseñado y desarrollado por Pewmatic.'],
+    ['¿Dónde funciona?', 'Estamos empezando por Asturias (Oviedo, Gijón, Avilés y alrededores) y queremos ir llegando a más zonas de España. Cada profesional indica hasta dónde se desplaza, así que solo te mostramos a quienes llegan a tu dirección.'],
+    ['¿Cómo funciona?', 'Cuentas tu problema al asistente, publicas el pedido y los profesionales de tu zona y de tu oficio te envían presupuestos. Tú los comparas, eliges uno y coordináis el día y la hora por el chat del pedido. Pedir presupuestos es gratis y sin compromiso. Tienes todos los pasos en el <a href="#/manual">manual de usuario</a>.'],
+    ['¿Puedo fiarme de los profesionales?', `Los que llevan la insignia «Verificado» nos han enviado su documento de identidad, su seguro de responsabilidad civil y, si su oficio lo exige, su carné, y los hemos revisado. Además verás las reseñas de otros clientes.${pay.mode === 'off' ? '' : ' Y el pago queda retenido hasta que confirmes que el trabajo está hecho.'}`],
+    ['¿Cuánto cuesta?', pay.mode === 'off'
+      ? 'Para ti, nada: pedir presupuestos, comparar y contactar es gratis. Pagas solo lo que acuerdes con el profesional.'
+      : `Para ti es gratis: pagas exactamente el presupuesto que aceptes. Al profesional le cobramos una comisión del ${pay.fee_pct} % solo sobre los trabajos que cobra a través de la plataforma.`],
+    ['¿Qué hacéis con mis datos?', 'Solo los necesarios para el servicio. Tu dirección exacta la ve únicamente el profesional que elijas. No usamos cookies de publicidad ni de analítica. Cuando el asistente usa un servicio de inteligencia artificial, el texto que escribes se envía a ese proveedor solo para ayudarte a preparar el pedido. Tienes el detalle en la <a href="#/legal/privacidad">política de privacidad</a>.'],
+    ['¿Cómo puedo contactar con vosotros?', `Escríbenos desde ${contactLink()} y te respondemos en 1–2 días laborables.`],
+  ];
+  const title = 'Sobre nosotros';
+  $app.innerHTML = `
+    <section class="about"><div class="about-in">
+      <h1 class="about-title" aria-label="${title}">${title.split(' ').map((w, i) => `<span class="w" style="--i:${i}" aria-hidden="true">${esc(w)}</span>`).join('')}</h1>
+      <p class="about-desc">Estamos aquí para resolver tus dudas. Si no encuentras lo que buscas, escríbenos a ${contactLink()}.</p>
+      <div class="acc">${faqs.map(([q, a], i) => `
+        <div class="acc-item" style="--i:${i}">
+          <h2><button type="button" class="acc-trigger" id="acc-t-${i}" aria-expanded="false" aria-controls="acc-p-${i}"><span>${esc(q)}</span>${icon('chevron-down')}</button></h2>
+          <div class="acc-panel" id="acc-p-${i}" role="region" aria-labelledby="acc-t-${i}"><div><div class="acc-body">${a}</div></div></div>
+        </div>`).join('')}</div>
+    </div></section>`;
+  const items = [...document.querySelectorAll('.acc-item')];
+  items.forEach((it) => it.querySelector('.acc-trigger').onclick = () => {
+    const opening = !it.classList.contains('open');
+    items.forEach((x) => { x.classList.remove('open'); x.querySelector('.acc-trigger').setAttribute('aria-expanded', 'false'); });
+    if (opening) { it.classList.add('open'); it.querySelector('.acc-trigger').setAttribute('aria-expanded', 'true'); }
+  });
 }
 
 async function viewSearch(query) {
@@ -1145,7 +1262,7 @@ function viewContacto() {
     <div class="wrap narrow legal">
       <h1>Contacto</h1>
       <p>¿Tienes una duda, quieres verificar tu perfil profesional o denunciar un perfil que incumple las normas?</p>
-      <p class="contact-mail">${icon('mail')} <a href="mailto:[email de contacto]">[email de contacto]</a></p>
+      <p class="contact-mail">${icon('mail')} ${state.config.contact_email ? `<a href="mailto:${esc(state.config.contact_email)}">${esc(state.config.contact_email)}</a>` : '<a href="mailto:[email de contacto]">[email de contacto]</a>'}</p>
       <p class="muted">Respondemos en 1–2 días laborables.</p>
     </div>`;
 }
@@ -1165,6 +1282,7 @@ function cookieNotice() {
 
 // ---------- router ----------
 async function route() {
+  navOpen = null;
   clearView();
   window.scrollTo(0, 0);
   const { parts, query } = parseHash();
@@ -1174,6 +1292,8 @@ async function route() {
     case undefined: return viewHome();
     case 'presupuestador': return viewPresupuestador(query);
     case 'comparador': return viewComparador(query);
+    case 'manual': return viewManual();
+    case 'nosotros': return viewNosotros();
     case 'pedir': return viewPedir(query);
     case 'pedidos': return viewPedidos(query);
     case 'pedido': return viewPedido(parts[1], query);
