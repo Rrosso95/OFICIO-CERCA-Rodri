@@ -50,6 +50,7 @@ En modo demostración (`DEMO_MODE=true`) todo funciona sin claves externas:
   - El cliente revisa el pedido, añade su dirección y hasta 3 fotos, y lo publica. Si no tiene cuenta, se le pide al publicar sin perder lo escrito.
 - **Comparar presupuestos** (`#/pedido/:id`): importe, si incluye materiales, cuándo puede ir el profesional, valoraciones y distancia, con las etiquetas «Más barato» y «Mejor valorado». Hay un chat interno con cada profesional.
 - **Búsqueda directa** por oficio y ubicación, con un mapa del radio de cada profesional, filtros, perfiles, reseñas y contacto.
+- **Reseñas solo tras un trabajo terminado:** un cliente solo puede valorar a un profesional cuando el pedido con él está **finalizado** (confirmado por el cliente o liberado el pago). No cuentan los trabajos en curso, cancelados ni reembolsados. Cada reseña queda ligada a ese pedido y se muestra con la etiqueta «Trabajo realizado». El profesional solo puede **responder** a las reseñas que recibe. Las reseñas de demostración anteriores se conservan, sin la etiqueta.
 - **Herramientas gratis sin registro:** «¿Cuánto cuesta?» (`#/presupuestador`) y «¿Está bien este presupuesto?» (`#/comparador`), que responde con un semáforo.
 
 ### Portada, manual y «Sobre nosotros»
@@ -255,7 +256,7 @@ Ordenado por prioridad. Las marcadas como **bloqueantes** deben resolverse antes
 
 ### 6. Importante, pero no bloqueante
 - [ ] **Tests automatizados** (API e interfaz) e integración continua.
-- [ ] **Reseñas:** hoy cualquier usuario registrado puede reseñar a cualquier profesional. Limítalas a clientes con un trabajo **finalizado** con ese profesional, y añade moderación y denuncias.
+- [ ] **Reseñas:** ya solo pueden reseñar los clientes con un trabajo **finalizado** con ese profesional (ver arriba). Falta moderación y denuncias, y que el profesional pueda valorar también al cliente si lo queréis.
 - [ ] **Administración ampliada:** gestión de usuarios, bloqueo de cuentas, moderación de contenido y métricas de negocio.
 - [ ] **Penalizar las cancelaciones repetidas** de profesionales y los perfiles con valoraciones bajas.
 - [ ] **Evitar que el trato se cierre fuera de la plataforma:** detectar teléfonos y emails en el chat del pedido.

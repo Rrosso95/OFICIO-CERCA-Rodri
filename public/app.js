@@ -450,7 +450,7 @@ async function viewManual() {
         <details><summary>¿Cómo funciona pedir presupuestos?</summary><p>Cuentas tu problema al asistente (puedes añadir fotos), publicas el pedido y los profesionales de tu zona y oficio te envían presupuestos. Tú eliges, aceptas y coordináis por el chat del pedido. Pedir es gratis y sin compromiso.</p></details>
         <details><summary>¿La IA decide algo por mí?</summary><p>No. El asistente solo te ayuda a describir el problema y a elegir el tipo de profesional. Cualquier precio que te muestre es una referencia orientativa de mano de obra, no un presupuesto: el precio real lo ponen los profesionales.</p></details>
         <details><summary>¿Cómo acuerdo el precio?</summary><p>Con los presupuestos de tu pedido. Si prefieres elegir tú a un profesional concreto, también puedes escribirle desde su perfil y acordar una propuesta de precio en el chat.</p></details>
-        <details><summary>¿Qué pasa si hay un problema con el trabajo?</summary><p>Habla primero con el profesional desde el chat. Después deja una reseña honesta: el profesional puede responder públicamente. Si crees que un perfil incumple las normas, escríbenos desde la página de contacto.</p></details>
+        <details><summary>¿Qué pasa si hay un problema con el trabajo?</summary><p>Habla primero con el profesional desde el chat. Cuando el trabajo esté terminado puedes dejar una reseña honesta, y el profesional puede responder públicamente. Si crees que un perfil incumple las normas, escríbenos desde la página de contacto.</p></details>
       </div>
 
       <div class="pro-cta reveal">
@@ -706,21 +706,25 @@ async function viewPro(id) {
             <div class="rv-big"><b>${p.avg_rating ? dec(p.avg_rating) : '—'}</b>${stars(p.avg_rating)}<span class="muted">${total} ${total === 1 ? 'reseña' : 'reseñas'}</span></div>
             <div class="rv-bars">${[5, 4, 3, 2, 1].map((k) => `<div><span>${k} ★</span><i style="--w:${total ? (p.breakdown[k] / total) * 100 : 0}%"></i><span>${p.breakdown[k]}</span></div>`).join('')}</div>
           </div>
-          ${me && !isMe ? `
+          ${me && !isMe && !p.can_review ? `<div class="notice">${p.job_in_progress
+            ? 'Tienes un trabajo en curso con este profesional. Podrás valorarlo cuando esté terminado.'
+            : 'Solo puedes valorar a un profesional cuando hayas terminado un trabajo con él por Oficio Cerca. Así las opiniones son de clientes reales.'}</div>` : ''}
+          ${me && !isMe && p.can_review ? `
             <form id="rvform" class="rvform">
               <h3>${myReview ? 'Editar tu reseña' : 'Deja tu reseña'}</h3>
               <div class="star-input" role="radiogroup" aria-label="Valoración">${[1, 2, 3, 4, 5].map((k) => `<button type="button" data-v="${k}" aria-label="${k} estrellas" class="${myReview && myReview.rating >= k ? 'on' : ''}">★</button>`).join('')}</div>
               <textarea name="comment" aria-label="Comentario" placeholder="¿Cómo fue el trabajo? Puntualidad, limpieza, precio…">${esc(myReview?.comment || '')}</textarea>
               <button class="btn">Publicar reseña</button>
-            </form>` : !me ? `<p class="muted"><a href="#/login?next=${next}">Inicia sesión</a> para dejar una reseña.</p>` : ''}
+            </form>` : ''}
+          ${!me ? `<p class="muted"><a href="#/login?next=${next}">Inicia sesión</a>. Solo pueden valorar los clientes que han terminado un trabajo con el profesional.</p>` : ''}
           <div class="rv-list">
             ${p.reviews.length ? p.reviews.map((r) => `
               <div class="rv">
-                <div class="rv-head"><b>${esc(r.author)}</b> ${stars(r.rating)} <span class="muted">${fmtDate(r.created_at)}</span></div>
+                <div class="rv-head"><b>${esc(r.author)}</b> ${stars(r.rating)} <span class="muted">${fmtDate(r.created_at)}</span>${r.verified_job ? ` <span class="tag ok">${icon('check')} Trabajo realizado</span>` : ''}</div>
                 ${r.comment ? `<p>${esc(r.comment)}</p>` : ''}
                 ${r.reply ? `<div class="reply"><b>Respuesta de ${esc(firstName(p.name))}:</b> ${esc(r.reply)}</div>` : ''}
                 ${isMe ? `<button class="link reply-btn" data-id="${r.id}">${r.reply ? 'Editar respuesta' : 'Responder'}</button>` : ''}
-              </div>`).join('') : '<p class="muted">Todavía no tiene reseñas. ¿Has trabajado con este profesional? Sé el primero en opinar.</p>'}
+              </div>`).join('') : '<p class="muted">Todavía no tiene reseñas. Las reseñas llegan cuando un cliente termina un trabajo con él.</p>'}
           </div>
         </section>
       </div>
