@@ -95,6 +95,13 @@ CREATE TABLE IF NOT EXISTS messages (
 );
 `);
 
+// Las reseñas solo se pueden dejar tras un trabajo terminado: cada una guarda el pedido que la respalda
+if (!db.prepare('PRAGMA table_info(reviews)').all().some((c) => c.name === 'order_id')) db.exec('ALTER TABLE reviews ADD COLUMN order_id INTEGER');
+
+// Último pedido finalizado del cliente con ese profesional (null si no hay ninguno)
+const doneJobWith = (clientId, proId) => db.prepare(
+  "SELECT id FROM orders WHERE client_id = ? AND accepted_pro_id = ? AND status = 'done' ORDER BY COALESCE(finished_at, updated_at) DESC LIMIT 1").get(clientId, proId) || null;
+
 const TRADES = [
   'Plomero / Fontanero', 'Gasista', 'Electricista', 'Cerrajero', 'Pintor', 'Albañil',
   'Carpintero', 'Climatización', 'Jardinero', 'Limpieza', 'Mudanzas', 'Manitas',
@@ -340,12 +347,16 @@ app.get('/api/pros/:id', (req, res) => {
   const row = db.prepare(`${PRO_SELECT} WHERE p.user_id = ?`).get(Number(req.params.id));
   if (!row) return res.status(404).json({ error: 'Profesional no encontrado' });
   const reviews = db.prepare(`
-    SELECT r.id, r.rating, r.comment, r.reply, r.created_at, r.user_id, u.name AS author
-    FROM reviews r JOIN users u ON u.id = r.user_id WHERE r.pro_id = ? ORDER BY r.created_at DESC`).all(row.user_id);
+    SELECT r.id, r.rating, r.comment, r.reply, r.created_at, r.user_id, (r.order_id IS NOT NULL) AS verified_job, u.name AS author
+    FROM reviews r JOIN users u ON u.id = r.user_id WHERE r.pro_id = ? ORDER BY r.created_at DESC`).all(row.user_id).map((r) => ({ ...r, verified_job: !!r.verified_job }));
   const dist = db.prepare('SELECT rating, COUNT(*) AS c FROM reviews WHERE pro_id = ? GROUP BY rating').all(row.user_id);
   const breakdown = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
   dist.forEach((d) => (breakdown[d.rating] = d.c));
   const out = { ...proOut(row, { full: true }), reviews, breakdown };
+  if (req.user) {
+    out.can_review = !!doneJobWith(req.user.id, row.user_id);
+    out.job_in_progress = !out.can_review && !!db.prepare("SELECT 1 FROM orders WHERE client_id = ? AND accepted_pro_id = ? AND status = 'taken'").get(req.user.id, row.user_id);
+  }
   // El contacto directo solo se muestra a usuarios registrados
   out.has_phone = !!row.phone; out.has_whatsapp = !!row.whatsapp; out.has_email = !!row.contact_email;
   if (!req.user) { out.phone = ''; out.whatsapp = ''; out.contact_email = ''; out.contact_locked = true; }
@@ -390,9 +401,12 @@ app.post('/api/pros/:id/reviews', auth, (req, res) => {
   if (!db.prepare('SELECT 1 FROM pros WHERE user_id = ?').get(proId)) return res.status(404).json({ error: 'No existe' });
   const rating = Math.round(num(req.body.rating) || 0);
   if (rating < 1 || rating > 5) return res.status(400).json({ error: 'La valoración debe ser de 1 a 5' });
-  db.prepare(`INSERT INTO reviews (pro_id, user_id, rating, comment, created_at) VALUES (?,?,?,?,?)
-    ON CONFLICT(pro_id, user_id) DO UPDATE SET rating=excluded.rating, comment=excluded.comment, created_at=excluded.created_at`)
-    .run(proId, req.user.id, rating, str(req.body.comment, 2000), now());
+  // Solo se puede valorar a un profesional tras terminar un trabajo con él por la plataforma
+  const job = doneJobWith(req.user.id, proId);
+  if (!job) return res.status(403).json({ error: 'Solo puedes valorar a un profesional cuando el trabajo con él esté terminado' });
+  db.prepare(`INSERT INTO reviews (pro_id, user_id, rating, comment, created_at, order_id) VALUES (?,?,?,?,?,?)
+    ON CONFLICT(pro_id, user_id) DO UPDATE SET rating=excluded.rating, comment=excluded.comment, created_at=excluded.created_at, order_id=excluded.order_id`)
+    .run(proId, req.user.id, rating, str(req.body.comment, 2000), now(), job.id);
   res.json({ ok: true });
 });
 
