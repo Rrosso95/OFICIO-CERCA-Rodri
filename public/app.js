@@ -6,7 +6,7 @@ const $nav = document.getElementById('nav');
 const state = {
   token: localStorage.getItem('token'),
   me: null, pro: null, unread: 0, pending: { total: 0 },
-  trades: [], config: { demo: false, pay: { mode: 'off', fee_pct: 10, release_hours: 72 } }, isAdmin: false,
+  trades: [], config: { demo: false, pay: { mode: 'off', fee_pct: 0, release_hours: 72 } }, isAdmin: false,
   loc: JSON.parse(localStorage.getItem('loc') || 'null'), // {lat,lng,label}
 };
 let maps = [];
@@ -167,6 +167,10 @@ function logoutLocal() {
   localStorage.removeItem('token');
   renderNav();
 }
+// Comisión de la plataforma: 0 % de momento (promoción de lanzamiento); más adelante puede activarse
+const feeFree = () => !(Number(state.config.pay.fee_pct) > 0);
+const FREE_NOTE = 'Es una promoción de lanzamiento: si más adelante aplicamos una comisión, te avisaremos con antelación.';
+
 // Menú superior simple: «Pedir presupuestos», «Buscar» y dos desplegables: «Ayuda» y la cuenta.
 let navOpen = null; // id del desplegable abierto
 function setNavMenu(id, { focus = false } = {}) {
@@ -409,7 +413,7 @@ async function viewManual() {
         ${state.config.pay.mode === 'off' ? '' : '<li><b>Configura tus cobros.</b> Es obligatorio para presupuestar y solo se hace una vez, desde «Cobros».</li>'}
         <li><b>Mira los pedidos de tu zona.</b> En «Pedidos» ves solo los de tu oficio dentro de tu radio, con el barrio y la distancia. La dirección exacta no se muestra hasta que te eligen.</li>
         <li><b>Envía tu presupuesto.</b> Indica el importe, si incluye materiales y cuándo podrías ir. Puedes editarlo o retirarlo y escribir al cliente para aclarar dudas.</li>
-        <li><b>Si te eligen,</b> verás la dirección${state.config.pay.mode === 'off' ? '' : ', el cliente pagará y tú cobrarás (menos la comisión del ' + state.config.pay.fee_pct + ' %) cuando confirme el trabajo'}. Marca el trabajo como terminado al acabar. Si no puedes hacerlo, cancélalo explicando el motivo.</li>
+        <li><b>Si te eligen,</b> verás la dirección${state.config.pay.mode === 'off' ? '' : ', el cliente pagará y tú cobrarás ' + (feeFree() ? '(sin comisión de momento)' : '(menos la comisión del ' + state.config.pay.fee_pct + ' %)') + ' cuando confirme el trabajo'}. Marca el trabajo como terminado al acabar. Si no puedes hacerlo, cancélalo explicando el motivo.</li>
         <li><b>Activa los avisos.</b> Desde tu cuenta puedes recibir emails y notificaciones cuando haya pedidos nuevos en tu zona.</li>
       </ol>
 
@@ -437,7 +441,9 @@ async function viewManual() {
       <div class="faq reveal">
         <details><summary>¿Es gratis?</summary><p>${state.config.pay.mode === 'off'
           ? 'Sí. Buscar, comparar y contactar con profesionales es gratis. Tampoco cobramos comisión a los profesionales por los trabajos que acuerdan.'
-          : `Para ti sí: pedir presupuestos, comparar y contactar es gratis y pagas exactamente el presupuesto que aceptes. El profesional paga una comisión del ${state.config.pay.fee_pct} % solo sobre los trabajos que cobra a través de la plataforma.`}</p></details>
+          : feeFree()
+            ? `Sí, para todos. Pedir presupuestos, comparar y contactar es gratis, pagas exactamente el presupuesto que aceptes y el profesional tampoco paga comisión. ${FREE_NOTE}`
+            : `Para ti sí: pedir presupuestos, comparar y contactar es gratis y pagas exactamente el presupuesto que aceptes. El profesional paga una comisión del ${state.config.pay.fee_pct} % solo sobre los trabajos que cobra a través de la plataforma.`}</p></details>
         ${state.config.pay.mode === 'off' ? '' : `<details><summary>¿Cómo funciona el pago?</summary><p>Al aceptar un presupuesto pagas en la plataforma y retenemos el dinero. Se libera al profesional cuando confirmas que el trabajo está hecho (o ${state.config.pay.release_hours} horas después de que él lo marque como terminado, si no reclamas). Si algo sale mal, abre una reclamación y el pago queda congelado hasta que lo revisemos.</p></details>`}
         <details><summary>¿Cómo se verifican los profesionales?</summary><p>Revisamos su identidad, su licencia o carné cuando el oficio lo exige y su seguro de responsabilidad civil. Los que pasan la revisión llevan la insignia «Verificado».</p></details>
         <details><summary>¿Por qué no veo a todos los profesionales de mi ciudad?</summary><p>Cada profesional indica hasta dónde se desplaza. Solo te mostramos a quienes llegan a tu dirección, para que no pierdas el tiempo.</p></details>
@@ -488,7 +494,9 @@ function viewNosotros() {
     ['¿Puedo fiarme de los profesionales?', `Los que llevan la insignia «Verificado» nos han enviado su documento de identidad, su seguro de responsabilidad civil y, si su oficio lo exige, su carné, y los hemos revisado. Además verás las reseñas de otros clientes.${pay.mode === 'off' ? '' : ' Y el pago queda retenido hasta que confirmes que el trabajo está hecho.'}`],
     ['¿Cuánto cuesta?', pay.mode === 'off'
       ? 'Para ti, nada: pedir presupuestos, comparar y contactar es gratis. Pagas solo lo que acuerdes con el profesional.'
-      : `Para ti es gratis: pagas exactamente el presupuesto que aceptes. Al profesional le cobramos una comisión del ${pay.fee_pct} % solo sobre los trabajos que cobra a través de la plataforma.`],
+      : (Number(pay.fee_pct) > 0
+        ? `Para ti es gratis: pagas exactamente el presupuesto que aceptes. Al profesional le cobramos una comisión del ${pay.fee_pct} % solo sobre los trabajos que cobra a través de la plataforma.`
+        : `De momento es gratis para todos: tú pagas exactamente el presupuesto que aceptes y el profesional no paga comisión. ${FREE_NOTE}`)],
     ['¿Qué hacéis con mis datos?', 'Solo los necesarios para el servicio. Tu dirección exacta la ve únicamente el profesional que elijas. No usamos cookies de publicidad ni de analítica. Cuando el asistente usa un servicio de inteligencia artificial, el texto que escribes se envía a ese proveedor solo para ayudarte a preparar el pedido. Tienes el detalle en la <a href="#/legal/privacidad">política de privacidad</a>.'],
     ['¿Cómo puedo contactar con vosotros?', `Escríbenos desde ${contactLink()} y te respondemos en 1–2 días laborables.`],
   ];
@@ -1253,9 +1261,11 @@ function viewProfesionales() {
     </section>
     <section class="wrap">
       <div class="benefits reveal">
-        <div>${icon('euro')}<h3>${state.config.pay.mode === 'off' ? 'Sin comisiones' : 'Solo pagas si cobras'}</h3><p>${state.config.pay.mode === 'off'
+        <div>${icon('euro')}<h3>${state.config.pay.mode === 'off' || feeFree() ? 'Gratis de momento' : 'Solo pagas si cobras'}</h3><p>${state.config.pay.mode === 'off'
           ? 'El precio lo acuerdas tú con el cliente. No nos quedamos con un porcentaje de tu trabajo.'
-          : `Crear tu perfil y recibir pedidos es gratis. Solo cobramos un ${state.config.pay.fee_pct} % de los trabajos que cobras por la plataforma, con el pago ya garantizado por el cliente.`}</p></div>
+          : feeFree()
+            ? `Crear tu perfil, recibir pedidos y cobrar por la plataforma es gratis, con el pago ya garantizado por el cliente. ${FREE_NOTE}`
+            : `Crear tu perfil y recibir pedidos es gratis. Solo cobramos un ${state.config.pay.fee_pct} % de los trabajos que cobras por la plataforma, con el pago ya garantizado por el cliente.`}</p></div>
         <div>${icon('map-pin')}<h3>Solo clientes de tu zona</h3><p>Tú decides el radio. Nadie de fuera de tu círculo te encontrará, así que no pierdes tiempo en desplazamientos.</p></div>
         <div>${icon('star')}<h3>Tu reputación trabaja por ti</h3><p>Cada reseña buena te sube en los resultados de “Mejor valorados”. Puedes responder públicamente a cualquier opinión.</p></div>
         <div>${icon('receipt')}<h3>Pedidos de tu zona</h3><p>Recibes los pedidos de clientes de tu oficio que están dentro de tu radio, envías tu presupuesto y, si te eligen, coordináis por el chat del pedido.</p></div>
@@ -1272,6 +1282,8 @@ function viewProfesionales() {
       <div class="faq reveal">
         <details><summary>¿Cuánto cuesta?</summary><p>${state.config.pay.mode === 'off'
           ? 'Crear el perfil y recibir clientes es gratis, y no cobramos comisión por los trabajos.'
+          : feeFree()
+          ? `De momento es todo gratis: crear el perfil, recibir pedidos y cobrar a través de la plataforma, sin comisión. ${FREE_NOTE}`
           : `Crear el perfil y recibir clientes es gratis. Solo hay una comisión del ${state.config.pay.fee_pct} % sobre los trabajos que cobras a través de la plataforma.`}</p></details>
         ${state.config.pay.mode === 'off' ? '' : '<details><summary>¿Cuándo cobro?</summary><p>El cliente paga al aceptar tu presupuesto y retenemos el dinero. Cuando termina el trabajo y el cliente lo confirma, te lo transferimos (si lo marcas como terminado y no hay reclamación, se libera solo pasado el plazo). Necesitas configurar tus cobros una vez.</p></details>'}
         <details><summary>¿Cómo consigo la insignia «Verificado»?</summary><p>Desde tu panel, en «Verificación», sube tu documento de identidad, tu seguro de responsabilidad civil y tu carné si tu oficio lo exige (gas, electricidad, climatización). Los revisamos, activamos la insignia y borramos los documentos.</p></details>
@@ -1307,7 +1319,7 @@ const LEGAL = {
     return `<div class="notice">Borrador pendiente de revisión legal. Completa los datos entre [corchetes] y que lo revise un profesional antes de publicar.</div>
     <h2>Qué es Oficio Cerca</h2><p>Oficio Cerca es una plataforma de intermediación entre personas que necesitan un servicio («clientes») y profesionales autónomos que lo prestan. No presta los servicios ni es parte del contrato entre ambos.</p>
     <h2>Pago retenido</h2><p>Cuando el cliente acepta un presupuesto, paga su importe a través de la plataforma. [Titular] retiene el pago hasta que el trabajo se confirma. ${c.mode === 'off' ? 'Actualmente los pagos están desactivados.' : ''}</p>
-    <h2>Comisión</h2><p>El cliente paga exactamente el importe del presupuesto aceptado. La plataforma cobra al profesional una comisión del ${c.fee_pct} % sobre ese importe, que se descuenta al liberar el pago. La comisión se factura al profesional.</p>
+    <h2>Comisión</h2><p>El cliente paga exactamente el importe del presupuesto aceptado. ${Number(c.fee_pct) > 0 ? `La plataforma cobra al profesional una comisión del ${c.fee_pct} % sobre ese importe, que se descuenta al liberar el pago. La comisión se factura al profesional.` : 'Durante el periodo de lanzamiento la plataforma <b>no cobra comisión</b> ni al cliente ni al profesional: el profesional recibe el importe íntegro. Si más adelante se aplica una comisión al profesional sobre los trabajos cobrados por la plataforma, se comunicará con antelación y se indicará su importe antes de que acepte cada presupuesto.'}</p>
     <h2>Liberación del pago</h2><ul><li>Cuando el cliente confirma que el trabajo está hecho, el pago se libera al profesional.</li><li>Si el profesional marca el trabajo como terminado y el cliente no responde ni reclama en ${c.release_hours} horas, el pago se libera automáticamente.</li></ul>
     <h2>Reclamaciones y reembolsos</h2><ul><li>Mientras el pago está retenido, el cliente puede abrir una reclamación indicando el motivo. El pago queda congelado hasta que lo revise la plataforma, que podrá reembolsar al cliente o liberar al profesional.</li><li>Si el cliente cancela antes de que el profesional marque el trabajo como terminado, se le reembolsa el importe íntegro.</li><li>Las reclamaciones sobre pagos ya liberados se dirigen al profesional; esto no limita los derechos que la ley reconoce al consumidor.</li></ul>
     <h2>Importante</h2><p>Para estar cubierto, el pago y la comunicación deben hacerse dentro de la plataforma. Los trabajos o materiales fuera del presupuesto aceptado no están incluidos.</p>`;
@@ -1383,7 +1395,7 @@ async function route() {
     try {
       [state.trades, state.config] = await Promise.all([api('/api/trades', { timeout: 60000 }), api('/api/config', { timeout: 60000 }).catch(() => ({ demo: false }))]);
       if (state.config.center) DEFAULT_CENTER = state.config.center;
-      state.config.pay = state.config.pay || { mode: 'off', fee_pct: 10, release_hours: 72 };
+      state.config.pay = state.config.pay || { mode: 'off', fee_pct: 0, release_hours: 72 };
     } catch (e) {
       $app.innerHTML = `<div class="wrap">${errorBox(e.message)}</div>`;
       bindRetry($app, boot);

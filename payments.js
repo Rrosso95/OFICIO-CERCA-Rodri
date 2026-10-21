@@ -6,7 +6,8 @@
 //  3) Si hay reclamación el pago queda congelado hasta que un administrador lo reembolse o lo libere.
 // Modos: 'stripe' (STRIPE_SECRET_KEY), 'simulated' (flujo completo sin dinero real, para demo) y 'off' (sin pagos).
 
-const FEE_PCT = Number(process.env.PLATFORM_FEE_PCT ?? 10);
+// Comisión al profesional: 0 % de momento (periodo de lanzamiento). Se activa más adelante con PLATFORM_FEE_PCT
+const FEE_PCT = Number(process.env.PLATFORM_FEE_PCT ?? 0);
 const RELEASE_HOURS = Number(process.env.RELEASE_HOURS ?? 72);
 const r2 = (n) => Math.round(n * 100) / 100;
 const cents = (n) => Math.round(n * 100);
@@ -52,6 +53,7 @@ module.exports = function createPayments({ db, now, DEMO_MODE, notify = null }) 
     updated_at TEXT NOT NULL
   );`);
 
+  if (mode === 'simulated') db.prepare("UPDATE payments SET fee = ROUND(amount * ? / 100, 2), net = ROUND(amount - ROUND(amount * ? / 100, 2), 2) WHERE provider = 'simulated' AND status IN ('pending','held')").run(FEE_PCT, FEE_PCT);
   const get = (sql, ...a) => db.prepare(sql).get(...a);
   const all = (sql, ...a) => db.prepare(sql).all(...a);
   const run = (sql, ...a) => db.prepare(sql).run(...a);
@@ -147,8 +149,8 @@ module.exports = function createPayments({ db, now, DEMO_MODE, notify = null }) 
     const t = now();
     run("UPDATE payments SET status = 'released', transfer_id = ?, released_at = ?, updated_at = ? WHERE id = ?", transferId, t, t, p.id);
     finishOrder(orderId);
-    sys(orderId, p.pro_id, p.client_id, `✅ Pago liberado al profesional (${eur(p.net)} tras la comisión de la plataforma). ¡Trabajo finalizado!`);
-    tell(p.pro_id, `Te hemos transferido ${eur(p.net)}`, [`El pago de «${title(orderId)}» se ha liberado: ${eur(p.amount)} menos la comisión de ${eur(p.fee)}. Puede tardar unos días en llegar a tu banco.`], orderId);
+    sys(orderId, p.pro_id, p.client_id, `✅ Pago liberado al profesional (${eur(p.net)}${p.fee > 0 ? ' tras la comisión de la plataforma' : ''}). ¡Trabajo finalizado!`);
+    tell(p.pro_id, `Te hemos transferido ${eur(p.net)}`, [`El pago de «${title(orderId)}» se ha liberado: ${p.fee > 0 ? `${eur(p.amount)} menos la comisión de ${eur(p.fee)}` : `${eur(p.amount)}, sin comisión`}. Puede tardar unos días en llegar a tu banco.`], orderId);
     if (by !== 'client') tell(p.client_id, `Trabajo finalizado: «${title(orderId)}»`, [by === 'auto' ? 'Ha pasado el plazo sin reclamaciones, así que hemos liberado el pago al profesional.' : 'Hemos resuelto la reclamación liberando el pago al profesional.', '¿Qué tal fue? Puedes dejarle una reseña.'], orderId);
     return getPayment(orderId);
   }

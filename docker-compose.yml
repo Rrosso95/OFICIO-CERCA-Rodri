@@ -20,7 +20,8 @@ services:
       STRIPE_SECRET_KEY: "${STRIPE_SECRET_KEY:-}"
       STRIPE_WEBHOOK_SECRET: "${STRIPE_WEBHOOK_SECRET:-}"
       PUBLIC_URL: "${PUBLIC_URL:-}"
-      PLATFORM_FEE_PCT: "${PLATFORM_FEE_PCT:-10}"
+      # Comisión al profesional (%). 0 de momento, para fomentar el uso; se podrá activar más adelante
+      PLATFORM_FEE_PCT: "${PLATFORM_FEE_PCT:-0}"
       RELEASE_HOURS: "${RELEASE_HOURS:-72}"
       ADMIN_EMAILS: "${ADMIN_EMAILS:-}"
       # Email público de contacto (se muestra en «Sobre nosotros» y «Contacto»)
