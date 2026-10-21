@@ -597,3 +597,9 @@ a.card { color: var(--ink); } a.card:hover { text-decoration: none; }
   .acc-panel, .acc-trigger .ic { transition: none; }
 }
 @media (max-width: 700px) { .about-in { padding: 44px 16px 36px; } .man-hero { padding: 36px 16px 28px; } }
+
+/* ---------- oficios del perfil ---------- */
+.suggest { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 10px; padding: 10px 12px; background: var(--teal-soft); border-radius: 12px; }
+.propose-row { display: flex; gap: 8px; margin-top: 12px; } .propose-row input { flex: 1; min-width: 0; }
+#myProposals { margin-top: 8px; }
+#verifyNote { margin: 10px 0 0; }
