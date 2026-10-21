@@ -82,7 +82,7 @@ Al volver a publicar, los demás presupuestos vuelven a estar disponibles y se a
 
 ### Pagos con retención
 - El cliente **paga al aceptar** el presupuesto, exactamente su importe, y el dinero queda **retenido**.
-- Al **confirmar el cliente** que el trabajo está hecho, se transfiere al profesional el importe **menos la comisión (10 %, a cargo del profesional)**.
+- Al **confirmar el cliente** que el trabajo está hecho, se transfiere al profesional el importe **menos la comisión**. **De momento la comisión es del 0 %** (promoción de lanzamiento para fomentar el uso): el profesional recibe el importe íntegro. Se activa más adelante con `PLATFORM_FEE_PCT` (p. ej. `10`) sin tocar código.
 - Si el profesional lo marca como terminado y el cliente no responde, el pago se libera solo a las **72 h**.
 - Mientras el pago está retenido, el cliente puede **reclamar**. El pago queda congelado hasta que un administrador lo reembolse o lo libere.
 - Si alguien cancela antes de terminar el trabajo, se **reembolsa** íntegro al cliente.
@@ -138,7 +138,7 @@ Todas las variables de entorno se pasan en [docker-compose.yml](docker-compose.y
 | `STRIPE_SECRET_KEY` | — | Activa los pagos reales con Stripe Connect (usa `sk_test_...` para probar) |
 | `STRIPE_WEBHOOK_SECRET` | — | Firma del webhook `/api/stripe/webhook`; sin ella, el estado del pago se consulta al abrir el pedido |
 | `PAYMENTS_MODE` | automático | Fuerza `stripe`, `simulated` u `off` |
-| `PLATFORM_FEE_PCT` | `10` | Comisión que paga el profesional (%) |
+| `PLATFORM_FEE_PCT` | `0` | Comisión que paga el profesional (%). `0` de momento; los textos de la web se adaptan solos al cambiarla |
 | `RELEASE_HOURS` | `72` | Horas hasta la liberación automática si el profesional marca el trabajo como terminado |
 | `CONTACT_EMAIL` | — | Email público que se muestra en «Sobre nosotros» y en «Contacto» (sin él, se enlaza a la página de contacto) |
 | `ADMIN_EMAILS` | `admin@demo.com` en demo | Emails de administración, separados por comas |

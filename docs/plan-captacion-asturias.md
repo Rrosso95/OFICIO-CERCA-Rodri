@@ -49,7 +49,7 @@ El pago retenido y la comisión se activan después, cuando haya confianza. Si p
 - **Cero cuotas y cero pago por contacto.** No pagan por ver un cliente.
 - **Solo piden presupuesto los pedidos de su oficio y de su zona**, ya explicados por el cliente (el asistente pregunta lo importante antes).
 - **Variante A (piloto sin pagos):** «Sin comisión durante el piloto. Os lo diremos con antelación si cambia».
-- **Variante B (con pagos):** «El cliente paga al aceptar y el dinero queda retenido; cobras al terminar. Comisión del 10 % solo si cobras».
+- **Variante B (con pagos):** «El cliente paga al aceptar y el dinero queda retenido; cobras al terminar, el importe íntegro. De momento no hay comisión (promoción de lanzamiento); si algún día la aplicamos, os avisaremos con antelación».
 - **Insignia «Verificado»** si envían DNI y seguro (los documentos se borran al revisarlos).
 
 ### Guion de llamada (1-2 minutos)
@@ -64,7 +64,7 @@ El pago retenido y la comisión se activan después, cuando haya confianza. Si p
 | «Ya tengo trabajo de sobra» | «Perfecto: entonces solo coges lo que te interesa. Puedes pausar tu perfil cuando quieras». |
 | «Las apps cobran por contacto y no sale nada» | «Aquí no se paga por contacto. Y solo ves pedidos de tu oficio y de tu zona». |
 | «No me fío / no sé usar apps» | Ofrecer crear el perfil juntos por teléfono o en persona. |
-| «¿Y cuánto os lleváis?» | Variante A: «Nada en el piloto». Variante B: «El 10 %, solo si cobras». Sé claro en que la cifra puede cambiar. |
+| «¿Y cuánto os lleváis?» | Variante A: «Nada en el piloto». Variante B: «De momento nada, es promoción de lanzamiento». Sé claro en que más adelante puede haber comisión y que se avisará antes. |
 | «¿Quién me asegura que el cliente paga?» | Variante B: «El cliente paga antes de que empieces». Variante A: «Pacta el pago con el cliente como siempre; el chat deja constancia». |
 
 ### Meta de profesionales
@@ -114,7 +114,7 @@ Una visita corta o llamada después del email. Empezad por **10 administradores*
 - **Presupuesto máximo para la prueba:** 300-500 €, repartido entre Google (búsquedas «fontanero Gijón», «electricista Oviedo»…) y una campaña local en Meta.
 - **Destino del anuncio:** `/servicios/fontanero/gijon` y similares, no la página de inicio.
 - **Qué medir:** coste por pedido publicado (no por clic), y cuántos reciben ≥2 presupuestos en menos de 1 hora.
-- **Regla para decidir:** si el coste por pedido real es mayor que lo que ganáis por trabajo (con el 10 % de comisión, unos pocos euros), **no escaléis** la publicidad. Cambiad antes el modelo (trabajos de más valor o ingresos por el lado del profesional).
+- **Regla para decidir:** si el coste por pedido real es mayor que lo que ganáis por trabajo (con la comisión que decidáis aplicar más adelante; hoy es 0 %), **no escaléis** la publicidad. Cambiad antes el modelo (trabajos de más valor o ingresos por el lado del profesional).
 
 ## 7. Calendario
 

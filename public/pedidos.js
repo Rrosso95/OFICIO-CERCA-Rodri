@@ -49,9 +49,9 @@ function payBoxPro(d) {
     pending: '<b>Esperando el pago del cliente</b><p>No empieces el trabajo hasta que esté pagado.</p>',
     held: p.pro_done_at
       ? `<b>Pendiente de confirmación del cliente</b><p>Recibirás ${money(p.net)}. Si no responde ni reclama, se libera automáticamente el ${fmtTime(p.release_at)}.</p>`
-      : `<b>Pago de ${money(p.amount)} retenido</b><p>Recibirás <b>${money(p.net)}</b> (comisión de ${money(p.fee)}) cuando el cliente confirme el trabajo. Márcalo como terminado al acabar.</p>`,
+      : `<b>Pago de ${money(p.amount)} retenido</b><p>Recibirás <b>${money(p.net)}</b>${p.fee > 0 ? ` (comisión de ${money(p.fee)})` : ' (sin comisión)'} cuando el cliente confirme el trabajo. Márcalo como terminado al acabar.</p>`,
     disputed: '<b>El cliente ha abierto una reclamación</b><p>El pago está congelado hasta que lo revise el equipo de Oficio Cerca.</p>',
-    released: `<b>Cobrado: ${money(p.net)}</b><p>Transferido a tu cuenta (importe ${money(p.amount)} menos la comisión de ${money(p.fee)}).</p>`,
+    released: `<b>Cobrado: ${money(p.net)}</b><p>Transferido a tu cuenta${p.fee > 0 ? ` (importe ${money(p.amount)} menos la comisión de ${money(p.fee)})` : ' (sin comisión)'}.</p>`,
     refunded: '<b>Pago reembolsado al cliente</b>',
   }[p.status];
   return `<section class="paybox ${p.status}">${h}</section>`;
@@ -422,7 +422,7 @@ async function viewPedido(id, query = {}) {
         <h3>${q ? 'Actualizar tu presupuesto' : 'Enviar presupuesto'}</h3>
         <div class="grid2">
           <label>Importe total (€)<input name="amount" type="number" min="1" max="100000" step="1" required value="${q ? q.amount : ''}" placeholder="p. ej. 65">
-            ${d.pay_mode !== 'off' ? `<small class="muted" id="netHint">Comisión de la plataforma: ${d.fee_pct} %. Se descuenta al cobrar.</small>` : ''}</label>
+            ${d.pay_mode !== 'off' ? `<small class="muted" id="netHint">${d.fee_pct > 0 ? `Comisión de la plataforma: ${d.fee_pct} %. Se descuenta al cobrar.` : 'Sin comisión de momento: cobrarás el importe íntegro.'}</small>` : ''}</label>
           <label>¿Cuándo podrías ir?<input name="visit_when" maxlength="120" value="${esc(q?.visit_when || '')}" placeholder="Mañana por la tarde"></label>
         </div>
         <label class="check"><input type="checkbox" name="materials" ${q?.materials_included ? 'checked' : ''}> El importe incluye materiales</label>
@@ -445,7 +445,11 @@ async function viewPedido(id, query = {}) {
     $app.querySelector('#odetail').innerHTML = warn + head(o, 'pro') + (d.won && pm ? payBoxPro(d) : '') + place + mine + (form ? `<section class="osec">${form}</section>` : '') + actions;
     const amountIn = document.querySelector('#qf [name=amount]'), hint = document.getElementById('netHint');
     if (amountIn && hint) {
-      const upd = () => { const a = Number(amountIn.value); hint.textContent = a > 0 ? `Comisión de la plataforma: ${d.fee_pct} %. Recibirías ${money(Math.round(a * (100 - d.fee_pct)) / 100)}.` : `Comisión de la plataforma: ${d.fee_pct} %. Se descuenta al cobrar.`; };
+      const upd = () => {
+        if (!(d.fee_pct > 0)) { hint.textContent = 'Sin comisión de momento: cobrarás el importe íntegro.'; return; }
+        const a = Number(amountIn.value);
+        hint.textContent = a > 0 ? `Comisión de la plataforma: ${d.fee_pct} %. Recibirías ${money(Math.round(a * (100 - d.fee_pct)) / 100)}.` : `Comisión de la plataforma: ${d.fee_pct} %. Se descuenta al cobrar.`;
+      };
       amountIn.oninput = upd; upd();
     }
     bindThumbs($app, o.photos);
@@ -501,11 +505,12 @@ async function viewCobros(query) {
   $app.innerHTML = `
     <div class="wrap narrow">
       <h1>Cobros</h1>
+      ${st.mode !== 'off' && !(st.fee_pct > 0) ? '<div class="notice"><b>Gratis de momento.</b> Cobrar a través de la plataforma no tiene comisión durante el lanzamiento. Si más adelante la aplicamos, te avisaremos con antelación.</div>' : ''}
       <div class="osec">${body}</div>
       <div class="osec"><h2>Cómo funciona</h2>
         <ul class="plain">
           <li>Cuando un cliente acepta tu presupuesto, <b>paga a través de la plataforma</b> y retenemos el dinero. Así sabes que el trabajo está pagado antes de empezar.</li>
-          <li>Al terminar, el cliente confirma y <b>te transferimos el importe menos la comisión del ${st.fee_pct} %</b>.</li>
+          <li>Al terminar, el cliente confirma y ${st.fee_pct > 0 ? `<b>te transferimos el importe menos la comisión del ${st.fee_pct} %</b>` : '<b>te transferimos el importe íntegro</b>'}.</li>
           <li>Si marcas el trabajo como terminado y el cliente no responde ni reclama en ${st.release_hours} horas, el pago se libera solo.</li>
           <li>Si hay una reclamación, el pago queda congelado hasta que la revisemos. Más detalle en las <a href="#/legal/condiciones">condiciones de pago</a>.</li>
         </ul></div>
@@ -591,7 +596,7 @@ async function viewAdmin(query = {}) {
         <div class="olist">${rows.length ? rows.map((p) => `
           <div class="ocard">
             <div class="oc-top"><b>#${p.order_id} · ${esc(p.title)}</b><span class="pill ${p.status === 'disputed' ? 'cancelled' : p.status === 'held' ? 'taken' : 'open'}">${LABEL[p.status]}</span></div>
-            <div class="meta"><span>Cliente: ${esc(p.client_name)}</span><span>Profesional: ${esc(p.pro_name)}</span><span>${money(p.amount)} (comisión ${money(p.fee)})</span></div>
+            <div class="meta"><span>Cliente: ${esc(p.client_name)}</span><span>Profesional: ${esc(p.pro_name)}</span><span>${money(p.amount)}${p.fee > 0 ? ` (comisión ${money(p.fee)})` : ' (sin comisión)'}</span></div>
             ${p.dispute_reason ? `<p class="q-msg"><b>Motivo:</b> ${esc(p.dispute_reason)}</p>` : ''}
             ${['disputed', 'held'].includes(p.status) ? `<div class="q-actions"><button class="btn" data-a="refund" data-id="${p.order_id}">Reembolsar al cliente</button><button class="btn ghost" data-a="release" data-id="${p.order_id}">Liberar al profesional</button></div>` : ''}
           </div>`).join('') : '<div class="empty"><p>Todavía no hay pagos.</p></div>'}</div>

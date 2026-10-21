@@ -169,6 +169,7 @@ module.exports = function seed(db, { hashPassword }) {
 // Pedidos de ejemplo (solo en DEMO_MODE y si no hay ninguno): se siembran aparte para que también
 // aparezcan en bases de datos demo creadas antes de existir los pedidos.
 module.exports.orders = function seedOrders(db, { payMode } = {}) {
+  const feePct = Number(process.env.PLATFORM_FEE_PCT ?? 0);
   if (db.prepare('SELECT COUNT(*) AS c FROM orders').get().c > 0) return;
   const uid = (email) => db.prepare('SELECT id FROM users WHERE email = ?').get(email)?.id;
   const laura = uid('cliente@demo.com'), javier = uid('cliente1@demo.com'), plomero = uid('plomero@demo.com');
@@ -224,7 +225,7 @@ module.exports.orders = function seedOrders(db, { payMode } = {}) {
     insMsg.run(c, elec.user_id, laura, 'text', 'Perfecto, aquí estaré. Gracias.', iso(1.8));
     if (payMode === 'simulated') {
       db.prepare(`INSERT INTO payments (order_id, client_id, pro_id, amount, fee, net, status, provider, created_at, updated_at, paid_at)
-        VALUES (?,?,?,?,?,?, 'held', 'simulated', ?, ?, ?)`).run(c, laura, elec.user_id, 90, 9, 81, iso(1.95), iso(1.95), iso(1.95));
+        VALUES (?,?,?,?,?,?, 'held', 'simulated', ?, ?, ?)`).run(c, laura, elec.user_id, 90, 90 * feePct / 100, 90 - 90 * feePct / 100, iso(1.95), iso(1.95), iso(1.95));
       insMsg.run(c, elec.user_id, laura, 'system', '💳 Pago de 90 € recibido y retenido. Se liberará al profesional cuando el cliente confirme que el trabajo está hecho.', iso(1.95));
     }
   }
