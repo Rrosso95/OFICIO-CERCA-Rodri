@@ -12,7 +12,6 @@ const KINDS = {
   insurance: 'Seguro de responsabilidad civil',
   license: 'Carné o habilitación profesional',
 };
-const REGULATED = ['Gasista', 'Electricista', 'Climatización'];
 const MIME = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'application/pdf': 'pdf' };
 const MAX_BYTES = 4 * 1024 * 1024;
 const magicOk = (buf, mime) => ({
@@ -22,7 +21,7 @@ const magicOk = (buf, mime) => ({
   'application/pdf': () => buf.subarray(0, 4).toString() === '%PDF',
 }[mime]?.() ?? false);
 
-module.exports = function verificationModule(app, { db, auth, now, parse, dataDir, isAdmin, notify }) {
+module.exports = function verificationModule(app, { db, auth, now, parse, dataDir, isAdmin, notify, isRegulated }) {
   const dir = path.join(dataDir, 'private', 'verificaciones');
   fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
   db.exec(`CREATE TABLE IF NOT EXISTS verifications (
@@ -40,7 +39,13 @@ module.exports = function verificationModule(app, { db, auth, now, parse, dataDi
   const all = (sql, ...a) => db.prepare(sql).all(...a);
   const run = (sql, ...a) => db.prepare(sql).run(...a);
   const fail = (res, code, error) => res.status(code).json({ error });
-  const required = (pro) => ['identity', 'insurance', ...(pro && [pro.trade, ...parse(pro.trades_extra)].some((t) => REGULATED.includes(t)) ? ['license'] : [])];
+  // Identidad y seguro, más un carné por cada oficio regulado que haga el profesional
+  const tradesOf = (pro) => [pro.trade, ...parse(pro.trades_extra)];
+  const required = (pro) => [
+    { kind: 'identity', label: KINDS.identity },
+    { kind: 'insurance', label: KINDS.insurance },
+    ...tradesOf(pro).filter(isRegulated).map((t) => ({ kind: `license:${t}`, label: `Carné o habilitación: ${t}` })),
+  ];
   const removeFiles = (docs) => docs.forEach((d) => { if (d.file) fs.rm(path.join(dir, d.file), { force: true }, () => {}); });
   const latest = (userId) => get('SELECT * FROM verifications WHERE user_id = ? ORDER BY id DESC LIMIT 1', userId);
 
@@ -49,7 +54,8 @@ module.exports = function verificationModule(app, { db, auth, now, parse, dataDi
     if (!pro) return fail(res, 404, 'Primero crea tu perfil profesional');
     const v = latest(req.user.id);
     res.json({
-      verified: !!pro.verified, required: required(pro).map((k) => ({ kind: k, label: KINDS[k] })),
+      verified: !!pro.verified, trades: tradesOf(pro), required: required(pro),
+      unverified_trades: tradesOf(pro).filter((t) => isRegulated(t) && !parse(pro.verified_trades).includes(t)),
       status: v?.status || null, review_note: v?.review_note || '', submitted_at: v?.created_at || null,
     });
   });
@@ -61,17 +67,17 @@ module.exports = function verificationModule(app, { db, auth, now, parse, dataDi
     const need = required(pro);
     const saved = [];
     try {
-      for (const kind of need) {
+      for (const { kind, label } of need) {
         const d = docs.find((x) => x?.kind === kind);
-        if (!d) throw Object.assign(new Error(`Falta: ${KINDS[kind]}`), { code: 400 });
+        if (!d) throw Object.assign(new Error(`Falta: ${label}`), { code: 400 });
         const mime = String(d.mime || '');
-        if (!MIME[mime]) throw Object.assign(new Error(`${KINDS[kind]}: usa una foto (JPG, PNG, WEBP) o un PDF`), { code: 400 });
+        if (!MIME[mime]) throw Object.assign(new Error(`${label}: usa una foto (JPG, PNG, WEBP) o un PDF`), { code: 400 });
         const buf = Buffer.from(String(d.data || '').replace(/^data:[^,]*,/, ''), 'base64');
-        if (!buf.length || buf.length > MAX_BYTES) throw Object.assign(new Error(`${KINDS[kind]}: el archivo debe ocupar menos de 4 MB`), { code: 400 });
-        if (!magicOk(buf, mime)) throw Object.assign(new Error(`${KINDS[kind]}: el archivo no es válido`), { code: 400 });
+        if (!buf.length || buf.length > MAX_BYTES) throw Object.assign(new Error(`${label}: el archivo debe ocupar menos de 4 MB`), { code: 400 });
+        if (!magicOk(buf, mime)) throw Object.assign(new Error(`${label}: el archivo no es válido`), { code: 400 });
         const file = `${req.user.id}-${crypto.randomBytes(16).toString('hex')}.${MIME[mime]}`;
         fs.writeFileSync(path.join(dir, file), buf, { mode: 0o600 });
-        saved.push({ kind, name: String(d.name || KINDS[kind]).slice(0, 120), mime, size: buf.length, file });
+        saved.push({ kind, label, name: String(d.name || label).slice(0, 120), mime, size: buf.length, file });
       }
     } catch (e) {
       removeFiles(saved);
@@ -87,13 +93,13 @@ module.exports = function verificationModule(app, { db, auth, now, parse, dataDi
   // ---------- administración ----------
   const adminOnly = (req, res, next) => (isAdmin(req.user) ? next() : fail(res, 403, 'Solo para administración'));
   app.get('/api/admin/verifications', auth, adminOnly, (_req, res) => {
-    const rows = all(`SELECT v.*, u.name, u.email, p.trade, p.license, p.verified FROM verifications v
+    const rows = all(`SELECT v.*, u.name, u.email, p.trade, p.trades_extra, p.license, p.verified FROM verifications v
       JOIN users u ON u.id = v.user_id LEFT JOIN pros p ON p.user_id = v.user_id
       ORDER BY CASE v.status WHEN 'pending' THEN 0 ELSE 1 END, v.id DESC LIMIT 100`);
     res.json(rows.map((v) => ({
-      id: v.id, user_id: v.user_id, name: v.name, email: v.email, trade: v.trade, license: v.license, status: v.status,
+      id: v.id, user_id: v.user_id, name: v.name, email: v.email, trade: v.trade, trades: [v.trade, ...parse(v.trades_extra)], license: v.license, status: v.status,
       note: v.note, review_note: v.review_note, created_at: v.created_at, reviewed_at: v.reviewed_at,
-      docs: parse(v.docs).map((d, i) => ({ i, kind: d.kind, label: KINDS[d.kind], name: d.name, mime: d.mime, size: d.size, available: !!d.file })),
+      docs: parse(v.docs).map((d, i) => ({ i, kind: d.kind, label: d.label || KINDS[d.kind] || d.kind, name: d.name, mime: d.mime, size: d.size, available: !!d.file })),
     })));
   });
 
@@ -115,7 +121,10 @@ module.exports = function verificationModule(app, { db, auth, now, parse, dataDi
     if (process.env.VERIF_KEEP_DOCS !== 'true') { removeFiles(docs); docs = docs.map(({ file, ...d }) => d); }
     run('UPDATE verifications SET status = ?, review_note = ?, reviewer_id = ?, reviewed_at = ?, docs = ? WHERE id = ?',
       action === 'approve' ? 'approved' : 'rejected', note, req.user.id, now(), JSON.stringify(docs), v.id);
-    if (action === 'approve') run('UPDATE pros SET verified = 1 WHERE user_id = ?', v.user_id);
+    if (action === 'approve') {
+      const pro = get('SELECT trade, trades_extra FROM pros WHERE user_id = ?', v.user_id);
+      run('UPDATE pros SET verified = 1, verified_trades = ? WHERE user_id = ?', JSON.stringify(pro ? tradesOf(pro) : []), v.user_id);
+    }
     notify.notifyUser(v.user_id, action === 'approve' ? 'Tu perfil ya está verificado' : 'Revisa tu verificación',
       action === 'approve'
         ? ['Hemos revisado tus documentos y tu perfil ya muestra la insignia «Verificado».']
@@ -124,5 +133,5 @@ module.exports = function verificationModule(app, { db, auth, now, parse, dataDi
     res.json({ ok: true });
   });
 
-  return { KINDS, REGULATED };
+  return { KINDS };
 };

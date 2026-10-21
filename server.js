@@ -304,6 +304,9 @@ app.put('/api/pros/me', auth, (req, res) => {
   const extras = (Array.isArray(b.trades_extra) ? b.trades_extra : []).filter((t) => TRADES.includes(t) && t !== b.trade);
   const gallery = (Array.isArray(b.gallery) ? b.gallery : []).filter((g) => typeof g === 'string').slice(0, 8);
   const photo = typeof b.photo === 'string' ? b.photo.slice(0, 600000) : '';
+  // Si ya estaba verificado y añade un oficio que pide carné que no se revisó, tendrá que verificarse de nuevo
+  const before = db.prepare('SELECT verified, verified_trades FROM pros WHERE user_id = ?').get(req.user.id);
+  const needsReverify = !!(before && before.verified && [b.trade, ...extras].some((t) => tradesApi.isRegulated(t) && !parse(before.verified_trades).includes(t)));
 
   db.prepare(`
     INSERT INTO pros (user_id, trade, trades_extra, headline, description, phone, whatsapp, contact_email, photo,
@@ -328,8 +331,9 @@ app.put('/api/pros/me', auth, (req, res) => {
     lat, lng, str(b.base_label, 200), radius, b.active === false ? 0 : 1, now()
   );
   if (b.name && String(b.name).trim()) db.prepare('UPDATE users SET name = ? WHERE id = ?').run(str(b.name, 80).trim(), req.user.id);
+  if (needsReverify) db.prepare('UPDATE pros SET verified = 0 WHERE user_id = ?').run(req.user.id);
   const row = db.prepare(`${PRO_SELECT} WHERE p.user_id = ?`).get(req.user.id);
-  res.json(proOut(row, { full: true }));
+  res.json({ ...proOut(row, { full: true }), verification_reset: needsReverify });
 });
 
 app.get('/api/pros/:id', (req, res) => {
@@ -484,7 +488,8 @@ app.post('/api/messages/:id/offer', auth, (req, res) => {
 orders = require('./orders')(app, { db, auth, TRADES, now, num, str, parse, haversineKm, PRO_SELECT, proOut, pay, mailer, notify });
 pay.routes(app, auth);
 notify.routes(app, auth);
-require('./verification')(app, { db, auth, now, parse, dataDir: path.dirname(DB_PATH), isAdmin: pay.isAdmin, notify });
+const tradesApi = require('./trades')(app, { db, auth, TRADES, now, parse, isAdmin: pay.isAdmin, notify, detectTrades: require('./ai').detectTrades });
+require('./verification')(app, { db, auth, now, parse, dataDir: path.dirname(DB_PATH), isAdmin: pay.isAdmin, notify, isRegulated: tradesApi.isRegulated });
 
 app.put('/api/me/notifs', auth, (req, res) => {
   db.prepare('UPDATE users SET email_notifs = ? WHERE id = ?').run(req.body?.email_notifs === false ? 0 : 1, req.user.id);
@@ -510,6 +515,7 @@ if (DEMO_MODE) {
   const seed = require('./seed');
   seed(db, { hashPassword, TRADES });
   seed.orders(db, { payMode: pay.mode });
+  tradesApi.backfill();
   if (pay.isAdmin({ email: 'admin@demo.com' }) && !db.prepare("SELECT 1 FROM users WHERE email = 'admin@demo.com'").get())
     db.prepare("INSERT INTO users (email, pass_hash, name, role, created_at) VALUES ('admin@demo.com', ?, 'Administración', 'client', ?)").run(hashPassword('demo1234'), now());
 }

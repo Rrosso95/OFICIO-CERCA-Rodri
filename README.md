@@ -63,7 +63,9 @@ En modo demostración (`DEMO_MODE=true`) todo funciona sin claves externas:
 - **Pedidos nuevos de su zona:** solo los de su oficio cuyo cliente queda dentro de su radio. Ven el barrio y la distancia; la **dirección exacta solo la ve el profesional elegido**.
 - **Presupuestos:** pueden enviarlos, editarlos o retirarlos, y escribir al cliente antes de presupuestar.
 - **Cobros** (`#/cobros`): se configuran una vez con Stripe Connect. Hasta entonces no pueden presupuestar.
-- **Verificación documental:** suben su DNI/NIE y su seguro de responsabilidad civil, más el carné en los oficios de gas, electricidad o climatización. Un administrador lo revisa y el perfil pasa a mostrar «Verificado».
+- **Varios oficios:** un oficio principal y los que quieran añadir. Al escribir el titular y la descripción, el perfil **detecta oficios** (p. ej. «instalaciones eléctricas» → Electricista) y los ofrece como sugerencia con un clic.
+- **Oficios que no están en la lista:** pueden proponerlos desde el perfil. Quedan «pendientes de revisión» hasta que un administrador los aprueba en **Administración → Oficios** (y decide si piden carné); al aprobarlos entran en la lista de todos y en el perfil de quien los propuso. Si el nombre equivale a uno existente («fontanero»), se reutiliza el que ya está. Máximo 3 propuestas pendientes por profesional.
+- **Verificación documental:** suben su DNI/NIE y su seguro de responsabilidad civil, más **un carné por cada oficio regulado** que tengan (gas, electricidad, climatización y los que el administrador marque). Un administrador lo revisa y el perfil pasa a mostrar «Verificado». Si un profesional ya verificado añade después un oficio que pide carné, tendrá que verificarse de nuevo; añadir uno sin carné no le quita la verificación.
 - **Cancelación:** si no pueden hacer un trabajo ya aceptado, lo cancelan explicando el motivo, y el cliente recupera su dinero.
 
 ### Ciclo de un pedido
@@ -163,7 +165,8 @@ server.js        arranque, usuarios, perfiles, búsqueda, reseñas, mensajes dir
 orders.js        pedidos, presupuestos, chat del pedido, caducidad, cancelaciones, avisos de pedidos
 ai.js            asistente (Claude con salida estructurada, o preguntas guiadas por palabras clave)
 payments.js      pagos con retención, reclamaciones y administración de pagos
-verification.js  verificación documental de profesionales
+verification.js  verificación documental de profesionales (identidad, seguro y un carné por oficio regulado)
+trades.js        oficios: lista común, oficios propuestos por profesionales y su aprobación, oficios regulados
 notify.js        avisos por email y push (claves VAPID)
 mailer.js        envío SMTP o registro local
 prices.js        precios de referencia, emparejado de trabajos y veredicto del comparador
@@ -189,6 +192,7 @@ Autenticación con `Authorization: Bearer <token>`, que devuelven `/api/auth/log
 | Ciclo del pedido | `POST /api/orders/:id/finish` · `/cancel` · `/pro-cancel` · `/reopen` · `GET/POST /api/orders/:id/chat?pro=` |
 | Pagos | `POST /api/orders/:id/pay` · `/pay/confirm-simulated` · `/dispute` · `GET /api/pay/status` · `POST /api/pay/connect` · `/api/pay/dashboard` · `POST /api/stripe/webhook` |
 | Verificación | `GET /api/verification/me` · `POST /api/verification` |
+| Oficios | `GET /api/trades/info` · `POST /api/trades/detect` · `POST /api/trades/propose` · admin: `GET /api/admin/trades` · `POST /api/admin/trades/:id/review` |
 | Push | `GET /api/push/key` · `GET /api/push/status` · `POST /api/push/subscribe` · `/unsubscribe` |
 | Herramientas | `POST /api/tools/estimate` · `POST /api/tools/compare` (60 consultas cada 10 min por IP) |
 | Administración | `GET /api/admin/payments` · `POST /api/admin/orders/:id/resolve` · `GET /api/admin/verifications` · `GET .../:id/doc/:i` · `POST .../:id/review` · `GET /api/admin/emails` |

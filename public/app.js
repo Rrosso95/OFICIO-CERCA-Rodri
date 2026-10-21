@@ -905,6 +905,62 @@ function bindNotifs() {
     catch (e) { el.checked = !el.checked; toast(e.message, 'err'); }
   };
 }
+// Oficios del perfil: detección por el texto, oficios que piden carné y propuesta de oficios nuevos
+function bindTradePicker(f) {
+  let info = { regulated: [], mine: [] }, timer, detected = [];
+  const chips = () => [...f.querySelectorAll('[name=extra]')];
+  const selected = () => [f.trade.value, ...chips().filter((c) => c.checked).map((c) => c.value)].filter(Boolean);
+  const choose = (t) => {
+    if (!state.trades.includes(t)) return;
+    if (!f.trade.value) f.trade.value = t;
+    else if (t !== f.trade.value) { const c = chips().find((x) => x.value === t); if (c) c.checked = true; }
+    note(); suggest(detected);
+  };
+  const note = () => {
+    const sel = selected(), reg = sel.filter((t) => info.regulated.includes(t));
+    document.getElementById('verifyNote').textContent = sel.length
+      ? `Oficios de tu perfil: ${sel.join(', ')}. Para verificarlo te pediremos identidad y seguro${reg.length ? `, y el carné o habilitación de: ${reg.join(', ')}` : ''}.` : '';
+  };
+  const paintMine = () => {
+    document.getElementById('myProposals').innerHTML = info.mine.map((m) =>
+      `<span class="tag ${m.status === 'rejected' ? 'hot' : ''}" title="${esc(m.review_note || '')}">${esc(m.name)} · ${m.status === 'rejected' ? 'no aceptado' : 'pendiente de revisión'}</span>`).join('');
+  };
+  const suggest = (list) => {
+    const box = document.getElementById('tradeSuggest');
+    const mine = selected(), pend = list.filter((t) => !mine.includes(t));
+    box.hidden = !pend.length;
+    box.innerHTML = pend.length ? `<span class="muted small">Detectamos estos oficios en lo que escribes:</span> ${pend.map((t) => `<button type="button" class="chip-btn" data-t="${esc(t)}">+ ${esc(t)}</button>`).join('')}` : '';
+    box.querySelectorAll('button').forEach((b) => (b.onclick = () => choose(b.dataset.t)));
+  };
+  const detect = () => {
+    clearTimeout(timer);
+    timer = setTimeout(async () => {
+      const text = `${f.headline.value} ${f.description.value}`.trim();
+      if (text.length < 15) { detected = []; return suggest(detected); }
+      try { detected = (await api('/api/trades/detect', { method: 'POST', body: { text } })).trades; suggest(detected); } catch { /* sin sugerencias */ }
+    }, 700);
+  };
+  f.headline.addEventListener('input', detect); f.description.addEventListener('input', detect);
+  f.trade.addEventListener('change', note); chips().forEach((c) => c.addEventListener('change', note));
+  document.getElementById('proposeBtn').onclick = async () => {
+    const input = document.getElementById('newTrade'), name = input.value.trim();
+    if (!name) return toast('Escribe el nombre del oficio', 'err');
+    try {
+      const r = await api('/api/trades/propose', { method: 'POST', body: { name } });
+      if (r.exists) { choose(r.trade); toast(`«${r.trade}» ya está en la lista: lo hemos marcado`); }
+      else {
+        toast(r.already ? 'Ese oficio ya está en revisión' : 'Enviado a revisión. Te avisaremos cuando esté disponible');
+        if (!info.mine.some((m) => m.name === r.name)) info.mine.unshift({ name: r.name, status: 'pending' });
+        paintMine();
+      }
+      input.value = '';
+    } catch (e) { toast(e.message, 'err'); }
+  };
+  document.getElementById('newTrade').onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); document.getElementById('proposeBtn').click(); } };
+  note(); detect();
+  api('/api/trades/info').then((i) => { info = i; paintMine(); note(); }).catch(() => {});
+}
+
 async function viewPanel() {
   if (!state.me) return go('#/login?next=%23%2Fpanel');
   await loadMe(); renderNav();
@@ -960,7 +1016,15 @@ async function viewPanel() {
           <label>Titular (una frase)<input name="headline" maxlength="120" value="${esc(p.headline)}" placeholder="Ej.: Fugas, desatascos y calderas — urgencias 24h"></label>
           <label>Descripción<textarea name="description" rows="5" placeholder="Tu experiencia, qué trabajos haces, garantías…">${esc(p.description)}</textarea></label>
           <fieldset><legend>Otros oficios que también haces</legend>
-            <div class="chips">${state.trades.map((t) => `<label class="chip"><input type="checkbox" name="extra" value="${esc(t)}" ${p.trades_extra.includes(t) ? 'checked' : ''}><span>${esc(t)}</span></label>`).join('')}</div>
+            <p class="muted small">Puedes marcar todos los que hagas: te llegarán los pedidos de cada uno. Los oficios los detectamos también por lo que escribas arriba.</p>
+            <div class="chips" id="extraChips">${state.trades.map((t) => `<label class="chip"><input type="checkbox" name="extra" value="${esc(t)}" ${p.trades_extra.includes(t) ? 'checked' : ''}><span>${esc(t)}</span></label>`).join('')}</div>
+            <div id="tradeSuggest" class="suggest" hidden></div>
+            <div class="propose-row">
+              <input id="newTrade" maxlength="40" placeholder="¿Tu oficio no está? Escríbelo aquí" aria-label="Proponer un oficio nuevo">
+              <button type="button" class="btn ghost small" id="proposeBtn">Añadir oficio</button>
+            </div>
+            <div id="myProposals" class="tags"></div>
+            <p class="muted small" id="verifyNote"></p>
           </fieldset>
         </section>
 
@@ -1025,6 +1089,7 @@ async function viewPanel() {
   renderVerif();
 
   const f = document.getElementById('pf');
+  bindTradePicker(f);
   const start = p.base_lat ? { lat: p.base_lat, lng: p.base_lng } : DEFAULT_CENTER;
   const map = newMap('panelmap', start, p.base_lat ? 11 : DEFAULT_CENTER.zoom);
   let pos = p.base_lat ? { ...start } : null;
@@ -1085,7 +1150,7 @@ async function viewPanel() {
       languages: String(fd.get('languages') || '').split(',').map((s) => s.trim()).filter(Boolean),
       base_lat: pos.lat, base_lng: pos.lng, base_label: fd.get('base_label'), radius_km: fd.get('radius_km'), active: !!fd.get('active'),
     };
-    try { const r = await api('/api/pros/me', { method: 'PUT', body }); state.pro = r; toast('Perfil guardado'); go(`#/pro/${r.id}`); }
+    try { const r = await api('/api/pros/me', { method: 'PUT', body }); state.pro = r; toast(r.verification_reset ? 'Perfil guardado. Has añadido un oficio que pide carné: tendrás que verificarlo de nuevo' : 'Perfil guardado'); go(r.verification_reset ? '#/panel' : `#/pro/${r.id}`); }
     catch (err) { toast(err.message, 'err'); }
   };
 }

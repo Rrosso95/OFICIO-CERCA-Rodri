@@ -540,8 +540,9 @@ async function renderVerif() {
     return;
   }
   box.innerHTML = `${head}
-    <p class="muted">Los perfiles verificados generan más confianza y aparecen con la insignia «Verificado». Envíanos:</p>
+    <p class="muted">Los perfiles verificados generan más confianza y aparecen con la insignia «Verificado». Según los oficios de tu perfil (<b>${v.trades.map(esc).join(', ')}</b>), necesitamos:</p>
     ${v.status === 'rejected' ? `<div class="notice"><b>No pudimos verificar tu perfil.</b> ${esc(v.review_note)}</div>` : ''}
+    ${v.status === 'approved' && v.unverified_trades.length ? `<div class="notice">Has añadido ${v.unverified_trades.length === 1 ? 'un oficio que pide' : 'oficios que piden'} carné (<b>${v.unverified_trades.map(esc).join(', ')}</b>), así que tu perfil necesita una nueva verificación.</div>` : ''}
     <form id="vf" class="qform">
       ${v.required.map((r) => `<label>${esc(r.label)}<input type="file" accept="image/jpeg,image/png,image/webp,application/pdf" data-kind="${r.kind}" required></label>`).join('')}
       <p class="muted small">Foto o PDF, máximo 4 MB cada uno. Solo los ve el equipo de Oficio Cerca para comprobar tu identidad y se borran en cuanto los revisamos.</p>
@@ -574,12 +575,12 @@ async function renderVerif() {
 // ---------- administración: pagos, reclamaciones y verificaciones ----------
 async function viewAdmin(query = {}) {
   if (!state.me) return go(`#/login?next=${encodeURIComponent('#/admin')}`);
-  const tab = query.tab === 'verificaciones' ? 'verificaciones' : 'pagos';
+  const tab = ['verificaciones', 'oficios'].includes(query.tab) ? query.tab : 'pagos';
   $app.innerHTML = '<div class="wrap empty"><div class="spinner"></div></div>';
   let rows;
-  try { rows = await api(tab === 'pagos' ? '/api/admin/payments' : '/api/admin/verifications'); }
+  try { rows = await api({ pagos: '/api/admin/payments', verificaciones: '/api/admin/verifications', oficios: '/api/admin/trades' }[tab]); }
   catch (e) { $app.innerHTML = `<div class="wrap"><div class="empty"><h3>${esc(e.message)}</h3></div></div>`; return; }
-  const tabs = `<div class="tabs" role="tablist">${[['pagos', 'Pagos y reclamaciones'], ['verificaciones', 'Verificaciones']]
+  const tabs = `<div class="tabs" role="tablist">${[['pagos', 'Pagos y reclamaciones'], ['verificaciones', 'Verificaciones'], ['oficios', 'Oficios']]
     .map(([k, l]) => `<a role="tab" aria-selected="${k === tab}" class="${k === tab ? 'on' : ''}" href="#/admin?tab=${k}">${l}</a>`).join('')}</div>`;
 
   if (tab === 'pagos') {
@@ -603,6 +604,28 @@ async function viewAdmin(query = {}) {
     return;
   }
 
+  if (tab === 'oficios') {
+    const OL = { pending: ['Pendiente', 'taken'], approved: ['Aprobado', 'open'], rejected: ['Rechazado', 'cancelled'] };
+    $app.innerHTML = `
+      <div class="wrap narrow">
+        <h1>Administración</h1>${tabs}
+        <div class="olist">${rows.length ? rows.map((t) => `
+          <div class="ocard">
+            <div class="oc-top"><b>${esc(t.name)}</b><span class="pill ${OL[t.status][1]}">${OL[t.status][0]}${t.status === 'approved' && t.regulated ? ' · pide carné' : ''}</span></div>
+            <div class="meta"><span>Propuesto por ${esc(t.requester)} (${esc(t.email)})</span><span>${fmtDate(t.created_at)}</span></div>
+            ${t.review_note ? `<p class="q-msg"><b>Nota:</b> ${esc(t.review_note)}</p>` : ''}
+            ${t.status === 'pending' ? `<div class="q-actions"><button class="btn" data-t="approve" data-id="${t.id}">Aprobar</button><button class="btn ghost" data-t="approve-reg" data-id="${t.id}">Aprobar (pide carné)</button><button class="btn ghost" data-t="reject" data-id="${t.id}">Rechazar</button></div>` : ''}
+          </div>`).join('') : '<div class="empty"><p>No hay oficios propuestos.</p></div>'}</div>
+        <p class="muted small">Al aprobar, el oficio entra en la lista para todos y se añade al perfil de quien lo propuso. Si pide carné, se le pedirá en su verificación.</p>
+      </div>`;
+    $app.querySelectorAll('[data-t]').forEach((b) => (b.onclick = async () => {
+      let body = { action: b.dataset.t === 'reject' ? 'reject' : 'approve', regulated: b.dataset.t === 'approve-reg' };
+      if (body.action === 'reject') { const note = prompt('Motivo (se lo enviaremos al profesional):'); if (note == null) return; body.note = note; }
+      try { await api(`/api/admin/trades/${b.dataset.id}/review`, { method: 'POST', body }); toast('Hecho'); viewAdmin(query); } catch (e) { toast(e.message, 'err'); }
+    }));
+    return;
+  }
+
   const VLABEL = { pending: ['Pendiente', 'taken'], approved: ['Aprobada', 'open'], rejected: ['Rechazada', 'cancelled'] };
   $app.innerHTML = `
     <div class="wrap narrow">
@@ -610,7 +633,7 @@ async function viewAdmin(query = {}) {
       <div class="olist">${rows.length ? rows.map((v) => `
         <div class="ocard">
           <div class="oc-top"><b>${esc(v.name)}</b><span class="pill ${VLABEL[v.status][1]}">${VLABEL[v.status][0]}</span></div>
-          <div class="meta"><span>${esc(v.email)}</span><span>${esc(v.trade || '')}</span>${v.license ? `<span>Declara: ${esc(v.license)}</span>` : ''}<span>Enviado ${fmtDate(v.created_at)}</span></div>
+          <div class="meta"><span>${esc(v.email)}</span><span>Oficios: ${(v.trades || []).map(esc).join(', ')}</span>${v.license ? `<span>Declara: ${esc(v.license)}</span>` : ''}<span>Enviado ${fmtDate(v.created_at)}</span></div>
           <div class="q-actions">${v.docs.map((d) => (d.available
             ? `<button class="btn ghost small" data-doc="${v.id}/${d.i}" data-mime="${esc(d.mime)}">${icon('eye')} ${esc(d.label)}</button>`
             : `<span class="tag">${esc(d.label)} (borrado)</span>`)).join('')}</div>

@@ -231,4 +231,11 @@ async function chat(rawMessages, trades) {
   }
 }
 
-module.exports = { chat, aiProvider: provider };
+// Oficios que menciona un texto (para sugerirlos al crear el perfil)
+function detectTrades(text, trades) {
+  const t = plain(text), out = [];
+  for (const [name, re] of KEYWORDS) if (trades.includes(name) && re.test(t) && !out.includes(name)) out.push(name);
+  return out;
+}
+
+module.exports = { chat, aiProvider: provider, detectTrades };
